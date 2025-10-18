@@ -33,10 +33,5 @@
       "src": "/(.*)",
       "dest": "/index.html"
     }
-  ],
-  "env": {
-    "DRIVEBOT_API_KEY": "@drivebot-api-key",
-    "ALPHABOT_API_KEY": "@alphabot-api-key",
-    "GOOGLE_SERVICE_ACCOUNT_INFO": "@google-service-account-info"
-  }
+  ]
 }

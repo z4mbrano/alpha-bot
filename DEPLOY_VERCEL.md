@@ -58,20 +58,49 @@ Frontend agora usa `import.meta.env.VITE_API_URL`:
 
 ## 🔧 Configurar Variáveis de Ambiente na Vercel
 
-### Via Dashboard
+### ⚠️ IMPORTANTE: Configure ANTES do Deploy
+
+As variáveis de ambiente devem ser configuradas **no Dashboard da Vercel** antes de fazer o deploy.
+
+### Via Dashboard (Recomendado)
 
 1. Acesse seu projeto na Vercel
 2. Vá em **Settings → Environment Variables**
-3. Adicione as seguintes variáveis:
+3. Clique em **Add New**
+4. Adicione as seguintes variáveis **UMA POR UMA**:
 
-| Nome | Valor | Tipo |
-|------|-------|------|
-| `DRIVEBOT_API_KEY` | Sua chave do Gemini para DriveBot | Secret |
-| `ALPHABOT_API_KEY` | Sua chave do Gemini para AlphaBot | Secret |
-| `GOOGLE_SERVICE_ACCOUNT_INFO` | JSON da Service Account (completo) | Secret |
-| `FLASK_ENV` | `production` | Plain Text |
+#### Variável 1: DRIVEBOT_API_KEY
+- **Name:** `DRIVEBOT_API_KEY`
+- **Value:** Sua chave do Gemini para DriveBot (ex: `AIzaSyB...`)
+- **Environment:** Production, Preview, Development (marque todos)
+- Clique em **Save**
 
-### Via CLI (Alternativa)
+#### Variável 2: ALPHABOT_API_KEY
+- **Name:** `ALPHABOT_API_KEY`
+- **Value:** Sua chave do Gemini para AlphaBot (ex: `AIzaSyB...`)
+- **Environment:** Production, Preview, Development (marque todos)
+- Clique em **Save**
+
+#### Variável 3: GOOGLE_SERVICE_ACCOUNT_INFO
+- **Name:** `GOOGLE_SERVICE_ACCOUNT_INFO`
+- **Value:** JSON completo da Service Account (cole o conteúdo inteiro do arquivo `service-account.json`)
+  ```json
+  {"type":"service_account","project_id":"...","private_key_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",...}
+  ```
+- **Environment:** Production, Preview, Development (marque todos)
+- Clique em **Save**
+
+#### Variável 4: FLASK_ENV
+- **Name:** `FLASK_ENV`
+- **Value:** `production`
+- **Environment:** Production (marque apenas Production)
+- Clique em **Save**
+
+### ⚠️ Nota sobre Secrets na Vercel
+
+**NÃO use a sintaxe `@secret-name` no `vercel.json`**. Isso é para secrets compartilhados entre projetos. Para este projeto, use **Environment Variables** direto no dashboard.
+
+### Via CLI (Se preferir)
 
 ```bash
 # Instalar Vercel CLI
@@ -80,10 +109,11 @@ npm i -g vercel
 # Login
 vercel login
 
-# Adicionar secrets
-vercel secrets add drivebot-api-key "sua_chave_aqui"
-vercel secrets add alphabot-api-key "sua_chave_aqui"
-vercel secrets add google-service-account-info '{"type":"service_account",...}'
+# Na raiz do projeto
+vercel
+
+# Adicionar variáveis (será solicitado durante o setup)
+# Ou adicione manualmente via dashboard após o primeiro deploy
 ```
 
 ---
