@@ -4,46 +4,46 @@
 
 /* =============== THEME TOKENS (Design System) =============== */
 :root {
-  /* Dark (default) */
-  --bg: #0a0f1e;              /* Background principal */
-  --sidebar: #0d1425;         /* Sidebar */
-  --surface: #1a2235;         /* Cards/elementos */
-  --border: #374151;          /* Bordas */
-  --text: #f9fafb;            /* Texto primário */
-  --muted: #9ca3af;           /* Texto secundário */
+  /* Dark (default) — neutro moderno parecido com ChatGPT/Gemini/Perplexity */
+  --bg: #0e0f12;              /* Background principal (quase preto neutro) */
+  --sidebar: #121418;         /* Sidebar neutra */
+  --surface: #1a1d22;         /* Cartões/elementos */
+  --border: #2a2e36;          /* Bordas discretas */
+  --text: #e9edf3;            /* Texto primário */
+  --muted: #9aa3ae;           /* Texto secundário */
 
-  /* Accent */
-  --accent: #3b82f6;          /* Azul principal */
-  --accent-hover: #2563eb;    /* Azul hover */
-  --accent-dark: #1e40af;     /* Azul escuro */
-  --accent-gradient: linear-gradient(135deg, #3b82f6, #2563eb);
+  /* Accent (azul moderno) */
+  --accent: #4f8cff;          /* Azul principal */
+  --accent-hover: #2f6bff;    /* Hover */
+  --accent-dark: #1f4fd6;     /* Azul mais escuro */
+  --accent-gradient: linear-gradient(135deg, #4f8cff, #2f6bff);
 
   /* Helpers */
-  --ring: rgba(59,130,246,0.55);
+  --ring: rgba(79,140,255,0.55);
   --shadow: 0 10px 30px rgba(0,0,0,0.35);
 
   /* Derived */
-  --bg-2: #0f172a;
+  --bg-2: #121419;            /* Área de mensagens */
 }
 
 .light {
-  /* Light */
-  --bg: #f9fafb;              /* Background principal */
+  /* Light — neutro claro discreto */
+  --bg: #f6f7f9;              /* Background principal */
   --sidebar: #ffffff;          /* Sidebar */
-  --surface: #ffffff;          /* Cards/elementos */
-  --border: #e5e7eb;           /* Bordas */
-  --text: #111827;             /* Texto primário */
+  --surface: #ffffff;          /* Cartões */
+  --border: #e6e8ec;           /* Bordas */
+  --text: #0f1115;             /* Texto primário */
   --muted: #6b7280;            /* Texto secundário */
 
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
-  --accent-dark: #1e40af;
-  --accent-gradient: linear-gradient(135deg, #3b82f6, #2563eb);
+  --accent: #4f8cff;
+  --accent-hover: #2f6bff;
+  --accent-dark: #1f4fd6;
+  --accent-gradient: linear-gradient(135deg, #4f8cff, #2f6bff);
 
-  --ring: rgba(37,99,235,0.55);
+  --ring: rgba(47,107,255,0.5);
   --shadow: 0 10px 30px rgba(2,6,23,0.06);
 
-  --bg-2: #f3f4f6;
+  --bg-2: #eef1f5;
 }
 
 /* =============== BASE =============== */
@@ -62,14 +62,14 @@ body::after {
   inset: -10% -20% auto auto;
   width: 60vmax; height: 60vmax;
   pointer-events: none;
-  background: radial-gradient(closest-side, rgba(59,130,246,0.18), transparent 70%);
-  filter: blur(30px);
+  background: radial-gradient(closest-side, rgba(79,140,255,0.14), transparent 70%);
+  filter: blur(34px);
   transform: translate(10%, -20%);
 }
 body::after {
   inset: auto auto -20% -10%;
   width: 50vmax; height: 50vmax;
-  background: radial-gradient(closest-side, rgba(37,99,235,0.14), transparent 70%);
+  background: radial-gradient(closest-side, rgba(46,52,60,0.18), transparent 70%);
   transform: none;
 }
 
