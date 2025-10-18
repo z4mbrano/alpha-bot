@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #1a1a1a;
+  --bg-2: #2d2d2d;
+  --sidebar: #252525;
+  --text: #ffffff;
+  --muted: #9ca3af;
+  --accent: #3b82f6;
+  --bot-bubble: #f3f4f6;
+  --user-bubble: #3b82f6;
+}
+
+.light {
+  --bg: #ffffff;
+  --bg-2: #f9fafb;
+  --sidebar: #f3f4f6;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --bot-bubble: #e5e7eb;
+  --user-bubble: #2563eb;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+
+/* smooth scrolling for message feed */
+* { scroll-behavior: smooth; }
+
+.transition-fast {
+  transition: all 200ms ease;
+}
