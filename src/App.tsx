@@ -8,7 +8,7 @@ export default function App() {
   return (
     <ThemeProvider>
       <BotProvider>
-        <div className="h-screen flex">
+        <div className="h-screen flex bg-[var(--bg)]">
           <Sidebar />
           <ChatArea />
         </div>

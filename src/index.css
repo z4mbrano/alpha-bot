@@ -2,37 +2,134 @@
 @tailwind components;
 @tailwind utilities;
 
+/* =============== THEME TOKENS (Design System) =============== */
 :root {
-  --bg: #1a1a1a;
-  --bg-2: #2d2d2d;
-  --sidebar: #252525;
-  --text: #ffffff;
-  --muted: #9ca3af;
-  --accent: #3b82f6;
-  --bot-bubble: #f3f4f6;
-  --user-bubble: #3b82f6;
+  /* Dark (default) */
+  --bg: #0a0f1e;              /* Background principal */
+  --sidebar: #0d1425;         /* Sidebar */
+  --surface: #1a2235;         /* Cards/elementos */
+  --border: #374151;          /* Bordas */
+  --text: #f9fafb;            /* Texto primário */
+  --muted: #9ca3af;           /* Texto secundário */
+
+  /* Accent */
+  --accent: #3b82f6;          /* Azul principal */
+  --accent-hover: #2563eb;    /* Azul hover */
+  --accent-dark: #1e40af;     /* Azul escuro */
+  --accent-gradient: linear-gradient(135deg, #3b82f6, #2563eb);
+
+  /* Helpers */
+  --ring: rgba(59,130,246,0.55);
+  --shadow: 0 10px 30px rgba(0,0,0,0.35);
+
+  /* Derived */
+  --bg-2: #0f172a;
 }
 
 .light {
-  --bg: #ffffff;
-  --bg-2: #f9fafb;
-  --sidebar: #f3f4f6;
-  --text: #1f2937;
-  --muted: #6b7280;
-  --accent: #2563eb;
-  --bot-bubble: #e5e7eb;
-  --user-bubble: #2563eb;
+  /* Light */
+  --bg: #f9fafb;              /* Background principal */
+  --sidebar: #ffffff;          /* Sidebar */
+  --surface: #ffffff;          /* Cards/elementos */
+  --border: #e5e7eb;           /* Bordas */
+  --text: #111827;             /* Texto primário */
+  --muted: #6b7280;            /* Texto secundário */
+
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --accent-dark: #1e40af;
+  --accent-gradient: linear-gradient(135deg, #3b82f6, #2563eb);
+
+  --ring: rgba(37,99,235,0.55);
+  --shadow: 0 10px 30px rgba(2,6,23,0.06);
+
+  --bg-2: #f3f4f6;
 }
 
+/* =============== BASE =============== */
+html, body, #root { height: 100%; }
 body {
   background-color: var(--bg);
   color: var(--text);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
 }
 
-/* smooth scrolling for message feed */
+/* Subtle background flares */
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  inset: -10% -20% auto auto;
+  width: 60vmax; height: 60vmax;
+  pointer-events: none;
+  background: radial-gradient(closest-side, rgba(59,130,246,0.18), transparent 70%);
+  filter: blur(30px);
+  transform: translate(10%, -20%);
+}
+body::after {
+  inset: auto auto -20% -10%;
+  width: 50vmax; height: 50vmax;
+  background: radial-gradient(closest-side, rgba(37,99,235,0.14), transparent 70%);
+  transform: none;
+}
+
+/* smooth scrolling */
 * { scroll-behavior: smooth; }
 
-.transition-fast {
-  transition: all 200ms ease;
+.transition-fast { transition: all 200ms ease; }
+.transition-slow { transition: all 300ms ease; }
+
+/* Glass-like shells */
+.app-shell { backdrop-filter: blur(8px); box-shadow: var(--shadow); }
+
+/* Gradient text helper */
+.gradient-text {
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Input shell */
+.input-shell {
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--surface) 92%, transparent);
+  box-shadow: 0 10px 24px rgba(0,0,0,.25);
+}
+
+/* Message content basic typography */
+.message-content { line-height: 1.65; }
+.message-content h1,
+.message-content h2,
+.message-content h3 { font-weight: 800; line-height: 1.2; margin: .25rem 0 .5rem; }
+.message-content h1 { font-size: 1.25rem; }
+.message-content h2 { font-size: 1.125rem; }
+.message-content h3 { font-size: 1rem; }
+.message-content p { margin: .4rem 0; }
+.message-content ul { margin: .4rem 0 .4rem 1.2rem; list-style: disc; }
+.message-content ol { margin: .4rem 0 .4rem 1.2rem; list-style: decimal; }
+.message-content li { margin: .15rem 0; }
+.message-content code {
+  background: rgba(255,255,255,0.08);
+  color: inherit; padding: .15rem .35rem; border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+.message-content pre {
+  background: rgba(0,0,0,0.35);
+  color: #e5e7eb; padding: .75rem; border-radius: 10px; overflow: auto;
+}
+
+/* Nice scrollbars */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: color-mix(in oklab, var(--border) 75%, transparent); border-radius: 8px; }
+*::-webkit-scrollbar-thumb:hover { background: color-mix(in oklab, var(--border) 100%, transparent); }
+
+/* Micro interaction */
+.pressable:hover { transform: translateY(-1px); }
+.pressable:active { transform: translateY(0); }
+
+/* Utility for mobile sidebar overlay */
+.overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.5); backdrop-filter: blur(2px);
 }

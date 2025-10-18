@@ -12,24 +12,8 @@ export type Message = {
 }
 
 const initialMessages: Record<BotId, Message[]> = {
-  alphabot: [
-    {
-      id: 'a-welcome',
-      author: 'bot',
-      botId: 'alphabot',
-      text: 'Olá, eu sou o AlphaBot. Por favor, use o botão de anexo para enviar as planilhas (.csv, .xlsx) que você deseja analisar.',
-      time: Date.now() - 1000,
-    },
-  ],
-  drivebot: [
-    {
-      id: 'd-welcome',
-      author: 'bot',
-      botId: 'drivebot',
-      text: 'Olá! Eu sou o DriveBot. Para começar, por favor, siga estes dois passos:\n\n1. Envie aqui o ID da pasta do Google Drive que você deseja que eu analise.\n2. Compartilhe a pasta comigo, adicionando o e-mail id-spreadsheet-reader-robot@data-analytics-gc-475218.iam.gserviceaccount.com como Editor.\n\nFicarei aguardando sua confirmação para iniciar a análise.',
-      time: Date.now() - 1000,
-    },
-  ],
+  alphabot: [],
+  drivebot: [],
 }
 
 type BotContextType = {
@@ -105,41 +89,79 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
     setIsTyping(true)
 
     try {
-      // Chamar API do backend
-      const response = await fetch('http://localhost:5000/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          bot_id: active,
-          message: text,
-          conversation_id: conversationIds[active],
-        }),
-      })
+      // AlphaBot usa endpoint diferente
+      if (active === 'alphabot') {
+        // Verificar se há session_id (arquivos já foram enviados)
+        const sessionId = localStorage.getItem('alphabot_session_id')
+        
+        if (!sessionId) {
+          throw new Error('Por favor, anexe planilhas (.csv, .xlsx) primeiro usando o botão de anexo.')
+        }
 
-      const data = await response.json()
-      
-      if (data.error) {
-        throw new Error(data.error)
-      }
-
-      if (data.conversation_id && data.conversation_id !== conversationIds[active]) {
-        setConversationIds((prev) => {
-          const next = { ...prev, [active]: data.conversation_id as string }
-          return next
+        const response = await fetch('http://localhost:5000/api/alphabot/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            session_id: sessionId,
+            message: text,
+          }),
         })
-      }
 
-      // Adicionar resposta do bot
-      const botMsg: Message = {
-        id: 'b-' + Date.now(),
-        author: 'bot',
-        botId: active,
-        text: data.response,
-        time: Date.now(),
+        const data = await response.json()
+        
+        if (data.error) {
+          throw new Error(data.error)
+        }
+
+        // Adicionar resposta do bot
+        const botMsg: Message = {
+          id: 'b-' + Date.now(),
+          author: 'bot',
+          botId: active,
+          text: data.answer,
+          time: Date.now(),
+        }
+        setStore((s) => ({ ...s, [active]: [...s[active], botMsg] }))
+        
+      } else {
+        // DriveBot usa endpoint original
+        const response = await fetch('http://localhost:5000/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            bot_id: active,
+            message: text,
+            conversation_id: conversationIds[active],
+          }),
+        })
+
+        const data = await response.json()
+        
+        if (data.error) {
+          throw new Error(data.error)
+        }
+
+        if (data.conversation_id && data.conversation_id !== conversationIds[active]) {
+          setConversationIds((prev) => {
+            const next = { ...prev, [active]: data.conversation_id as string }
+            return next
+          })
+        }
+
+        // Adicionar resposta do bot
+        const botMsg: Message = {
+          id: 'b-' + Date.now(),
+          author: 'bot',
+          botId: active,
+          text: data.response,
+          time: Date.now(),
+        }
+        setStore((s) => ({ ...s, [active]: [...s[active], botMsg] }))
       }
-      setStore((s) => ({ ...s, [active]: [...s[active], botMsg] }))
 
     } catch (error) {
       // Em caso de erro, mostrar mensagem de fallback
