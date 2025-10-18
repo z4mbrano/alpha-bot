@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react'
+import React, { createContext, useContext, useEffect, useState } from 'react'
 
 export type BotId = 'alphabot' | 'drivebot'
 
@@ -46,6 +46,51 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
   const [active, setActive] = useState<BotId>('alphabot')
   const [store, setStore] = useState<Record<BotId, Message[]>>(initialMessages)
   const [isTyping, setIsTyping] = useState(false)
+  const storageKey = 'alpha-bot:conversation-ids'
+
+  const generateId = () => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID()
+    }
+    return Math.random().toString(36).slice(2) + Date.now().toString(36)
+  }
+
+  const getInitialConversationIds = (): Record<BotId, string> => {
+    if (typeof window === 'undefined') {
+      return {
+        alphabot: generateId(),
+        drivebot: generateId(),
+      }
+    }
+    try {
+      const stored = window.localStorage.getItem(storageKey)
+      if (stored) {
+        const parsed = JSON.parse(stored) as Partial<Record<BotId, string>>
+        return {
+          alphabot: parsed.alphabot ?? generateId(),
+          drivebot: parsed.drivebot ?? generateId(),
+        }
+      }
+    } catch (error) {
+      console.warn('Não foi possível recuperar os conversation_ids armazenados.', error)
+    }
+    const fallback = {
+      alphabot: generateId(),
+      drivebot: generateId(),
+    }
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(storageKey, JSON.stringify(fallback))
+    }
+    return fallback
+  }
+
+  const [conversationIds, setConversationIds] = useState<Record<BotId, string>>(() => getInitialConversationIds())
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(storageKey, JSON.stringify(conversationIds))
+    }
+  }, [conversationIds])
 
   const send = async (text: string) => {
     const userMsg: Message = {
@@ -69,6 +114,7 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({
           bot_id: active,
           message: text,
+          conversation_id: conversationIds[active],
         }),
       })
 
@@ -76,6 +122,13 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
       
       if (data.error) {
         throw new Error(data.error)
+      }
+
+      if (data.conversation_id && data.conversation_id !== conversationIds[active]) {
+        setConversationIds((prev) => {
+          const next = { ...prev, [active]: data.conversation_id as string }
+          return next
+        })
       }
 
       // Adicionar resposta do bot
