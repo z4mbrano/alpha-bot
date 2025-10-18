@@ -21,6 +21,7 @@ type BotContextType = {
   setActive: (b: BotId) => void
   messages: Message[]
   send: (text: string) => void
+  addMessage: (message: Message) => void
   isTyping: boolean
 }
 
@@ -75,6 +76,11 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
       window.localStorage.setItem(storageKey, JSON.stringify(conversationIds))
     }
   }, [conversationIds])
+
+  const addMessage = (message: Message) => {
+    // Adiciona mensagem localmente sem chamar o backend
+    setStore((s) => ({ ...s, [active]: [...s[active], message] }))
+  }
 
   const send = async (text: string) => {
     const userMsg: Message = {
@@ -181,7 +187,7 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
   const messages = store[active]
 
   return (
-    <BotContext.Provider value={{ active, setActive, messages, send, isTyping }}>{children}</BotContext.Provider>
+    <BotContext.Provider value={{ active, setActive, messages, send, addMessage, isTyping }}>{children}</BotContext.Provider>
   )
 }export const useBot = () => {
   const c = useContext(BotContext)

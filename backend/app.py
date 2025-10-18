@@ -3153,7 +3153,7 @@ Apresente APENAS a resposta final do Júri ao usuário.
         
         # Gerar resposta com Gemini
         genai.configure(api_key=ALPHABOT_API_KEY)
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         response = model.generate_content(validation_prompt)
         answer = response.text.strip()

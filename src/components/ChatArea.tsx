@@ -4,7 +4,7 @@ import MessageBubble from './MessageBubble'
 import { Paperclip, Send, X, Menu, BarChart2, Gem } from 'lucide-react'
 
 export default function ChatArea() {
-  const { active, messages, send, isTyping } = useBot()
+  const { active, messages, send, addMessage, isTyping } = useBot()
   const [text, setText] = useState('')
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const feedRef = useRef<HTMLDivElement | null>(null)
@@ -51,8 +51,13 @@ export default function ChatArea() {
     })
     
     try {
-      // Adicionar mensagem do usuário
-      send(`📎 Enviando ${selectedFiles.length} arquivo(s): ${selectedFiles.map(f => f.name).join(', ')}`)
+      // Adicionar mensagem de upload manualmente (sem chamar o backend)
+      addMessage({
+        id: 'u-' + Date.now(),
+        author: 'user',
+        text: `📎 Enviando ${selectedFiles.length} arquivo(s): ${selectedFiles.map(f => f.name).join(', ')}`,
+        time: Date.now(),
+      })
       
       // Upload para backend
       const response = await fetch('http://localhost:5000/api/alphabot/upload', {
@@ -118,13 +123,31 @@ ${periodSection}
 
 **Diagnóstico Concluído.** Estou pronto para responder às suas perguntas sobre os dados consolidados.`
         
-        // Enviar relatório formatado
-        send(diagnosticReport)
+        // Adicionar relatório formatado como mensagem do bot
+        addMessage({
+          id: 'b-' + Date.now(),
+          author: 'bot',
+          botId: active,
+          text: diagnosticReport,
+          time: Date.now(),
+        })
       } else {
-        send(`❌ Erro no upload: ${data.message}`)
+        addMessage({
+          id: 'b-' + Date.now(),
+          author: 'bot',
+          botId: active,
+          text: `❌ Erro no upload: ${data.message}`,
+          time: Date.now(),
+        })
       }
     } catch (error) {
-      send(`❌ Erro ao enviar arquivos: ${error}`)
+      addMessage({
+        id: 'b-' + Date.now(),
+        author: 'bot',
+        botId: active,
+        text: `❌ Erro ao enviar arquivos: ${error}`,
+        time: Date.now(),
+      })
       setSelectedFiles([])
     }
   }
