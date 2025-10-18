@@ -73,10 +73,10 @@ export default function Sidebar() {
             {bots.map(b => {
               const isActive = active === b.id
               const iconClass = collapsed
-                ? `w-10 h-10 rounded-xl flex items-center justify-center ${isActive ? 'bg-[var(--accent)] text-white' : 'bg-white/5'}`
+                ? `w-11 h-11 rounded-xl grid place-items-center transition-transform ${isActive ? 'bg-[var(--accent)] text-white ring-1 ring-[var(--accent)]/40' : 'bg-white/5 hover:bg-white/10 hover:scale-[1.02]'}`
                 : `w-8 h-8 rounded-md flex items-center justify-center ${isActive ? 'bg-white/10' : 'bg-white/5'}`
               const buttonClass = collapsed
-                ? 'pressable grid place-items-center p-2 rounded-lg hover:bg-white/5 transition-fast focus:outline-none focus:ring-2 focus:ring-[var(--ring)]'
+                ? 'pressable p-1 rounded-lg transition-fast focus:outline-none focus:ring-2 focus:ring-[var(--ring)] grid place-items-center'
                 : `pressable flex items-center gap-3 p-3 rounded-lg transition-fast focus:outline-none focus:ring-2 focus:ring-[var(--ring)] ${isActive ? 'bg-[var(--accent)] text-white' : 'hover:bg-white/5 text-[var(--text)]'}`
               return (
                 <button
@@ -88,6 +88,7 @@ export default function Sidebar() {
                   className={buttonClass}
                   title={b.name}
                   aria-label={b.name}
+                  aria-current={isActive ? 'true' : undefined}
                 >
                   <div className={iconClass}>{b.icon}</div>
                   {!collapsed && (

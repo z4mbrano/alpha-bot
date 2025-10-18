@@ -135,40 +135,64 @@ ${periodSection}
     setText('')
   }
 
-  const botName = active === 'alphabot' ? 'ALPHABOT' : 'DriveBot'
-  const placeholderText = active === 'alphabot' 
-    ? 'Descreva sua análise ou anexe planilhas...' 
+  const botName = active === 'alphabot' ? 'ALPHABOT' : 'DRIVEBOT'
+  const placeholderText = active === 'alphabot'
+    ? 'Descreva sua análise ou anexe planilhas...'
     : 'Cole o ID ou URL da pasta do Google Drive...'
+  const hasMessages = messages.length > 0
+  const botIcon = active === 'alphabot' ? '📊' : '💎'
+  const botTagline = active === 'alphabot'
+    ? 'Envie .csv ou .xlsx e faça perguntas sobre seus dados.'
+    : 'Cole o ID/URL da pasta do Google Drive para explorar arquivos.'
 
   return (
     <main className="flex-1 flex flex-col">
-      {/* Header sticks only when there are messages */}
-      {messages.length > 0 && (
-        <header className="sticky top-0 z-10 px-4 md:px-8 py-3 md:py-4 border-b border-[var(--border)] bg-[var(--sidebar)]/95 backdrop-blur">
+      {/* Header when there are messages */}
+      {hasMessages && (
+        <header className="sticky top-0 z-10 px-4 md:px-8 py-3 md:py-4 border-b border-[var(--border)] bg-[var(--sidebar)]/90 backdrop-blur app-shell">
           <div className="max-w-[900px] mx-auto flex items-center gap-3">
             <button
-              className="md:hidden opacity-80 hover:opacity-100 transition-fast"
+              className="md:hidden p-2 rounded hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
               aria-label="Abrir menu"
               onClick={() => window.dispatchEvent(new Event('alpha:toggle-sidebar'))}
             >
               <Menu size={18} />
             </button>
-            <div className="text-sm md:text-base text-[var(--muted)]">🤖</div>
-            <div className="font-semibold">{botName}</div>
+            <div className="w-8 h-8 rounded-md grid place-items-center bg-white/5" aria-hidden>
+              <span className="text-base">{botIcon}</span>
+            </div>
+            <div>
+              <div className="font-semibold leading-none">{botName}</div>
+              <div className="text-xs text-[var(--muted)] leading-none mt-1">{botTagline}</div>
+            </div>
           </div>
         </header>
       )}
 
       {/* Welcome area (no messages) */}
       {messages.length === 0 ? (
-        <div className="flex-1 grid place-items-center px-6">
-          <div className="text-center">
-            <h1 className="text-4xl md:text-5xl font-extrabold gradient-text tracking-tight">HELLO, USER</h1>
-            <p className="text-sm md:text-base text-[var(--muted)] mt-2">WELCOME TO THE {botName.toUpperCase()}</p>
-            <div className="mt-8 max-w-xl mx-auto bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 shadow-xl text-left">
-              <p className="text-sm md:text-base">
-                Olá, eu sou o AlphaBot. Por favor, use o botão de anexo para enviar as planilhas (.csv, .xlsx) que você deseja analisar.
-              </p>
+        <div className="flex-1 grid place-items-center px-6 bg-[var(--bg-2)]">
+          <div className="text-center max-w-xl">
+            <h1 className="font-black gradient-text tracking-tight" style={{fontSize: 'clamp(36px,5vw,48px)'}}>HELLO, USER</h1>
+            <p className="text-sm md:text-base text-[var(--muted)] mt-2">WELCOME TO THE {botName}</p>
+            <div className="mt-8 bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 shadow-xl text-left">
+              {active === 'alphabot' ? (
+                <>
+                  <p className="text-sm md:text-base">Olá, eu sou o <strong>ALPHABOT</strong>. Use o botão de anexo para enviar planilhas (<code>.csv</code>, <code>.xlsx</code>) que você deseja analisar.</p>
+                  <ul className="mt-3 text-sm list-disc pl-5 text-[var(--muted)]">
+                    <li>Depois do upload, faça perguntas como “Liste os 3 produtos mais caros…”.</li>
+                    <li>Campos numéricos e temporais são detectados automaticamente.</li>
+                  </ul>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm md:text-base">Olá, eu sou o <strong>DRIVEBOT</strong>. Cole o <em>ID</em> ou a <em>URL</em> da pasta do Google Drive para começar.</p>
+                  <ul className="mt-3 text-sm list-disc pl-5 text-[var(--muted)]">
+                    <li>Suporte a múltiplos arquivos e subpastas.</li>
+                    <li>Peça insights, rankings e sumarizações após a indexação.</li>
+                  </ul>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -183,7 +207,7 @@ ${periodSection}
                 <div className="bg-[var(--surface)] text-[var(--text)] rounded-tr-2xl rounded-br-2xl rounded-bl-xl p-3 shadow-sm border border-[var(--border)]/60">
                   <div className="flex items-center gap-2 text-[var(--muted)]">
                     <div className="text-sm">
-                      {active === 'alphabot' ? 'ALPHABOT' : 'DriveBot'} está digitando
+                      {active === 'alphabot' ? 'ALPHABOT' : 'DRIVEBOT'} está digitando
                     </div>
                     <div className="flex gap-1">
                       <div className="w-1.5 h-1.5 bg-[var(--muted)] rounded-full animate-bounce"></div>
