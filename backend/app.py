@@ -2038,19 +2038,28 @@ Não adicione nenhuma outra explicação, markdown, ou texto extra. APENAS o JSO
 2. **get_ranking**: Para criar um ranking agrupando dados
    Exemplo: {{"tool": "get_ranking", "params": {{"group_by_column": "Produto", "metric_column": "Receita_Total", "operation": "sum", "filters": {{"Data": "2024-12"}}, "top_n": 5, "ascending": false}}}}
 
-3. **get_unique_values**: Para listar valores únicos de uma coluna
+3. **get_extremes**: ⭐ Para encontrar AMBOS o máximo E o mínimo simultaneamente
+   Exemplo: {{"tool": "get_extremes", "params": {{"group_by_column": "Data", "metric_column": "Receita_Total", "operation": "sum", "filters": {{}}}}}}
+   Use quando o usuário pedir: "maior e menor", "mais caro e mais barato", "melhor e pior", etc.
+
+4. **get_unique_values**: Para listar valores únicos de uma coluna
    Exemplo: {{"tool": "get_unique_values", "params": {{"column": "Região"}}}}
 
-4. **get_time_series**: Para análise temporal/evolução ao longo do tempo
+5. **get_time_series**: Para análise temporal/evolução ao longo do tempo
    Exemplo: {{"tool": "get_time_series", "params": {{"time_column": "Data", "metric_column": "Receita_Total", "operation": "sum", "group_by_column": "Região"}}}}
 
-5. **get_filtered_data**: Para buscar detalhes de uma entidade específica (transação, produto, etc)
+6. **get_filtered_data**: Para buscar detalhes de uma entidade específica (transação, produto, etc)
    Exemplo: {{"tool": "get_filtered_data", "params": {{"filters": {{"ID_Transacao": "T-002461"}}, "columns": ["Produto", "Data", "Receita_Total"]}}}}
 
 **REGRAS IMPORTANTES:**
+- ⚠️ **REGRA CRÍTICA DE FILTROS:** Você DEVE incluir TODOS os filtros contextuais mencionados pelo usuário
+  * Se o usuário pede "compare Janeiro e Novembro", o filtro DEVE ser: "Data_Mes_Nome": ["janeiro", "novembro"]
+  * Se o usuário pede "categoria Eletrônicos em Janeiro e Novembro", os filtros DEVEM ser: "Categoria": "eletrônicos", "Data_Mes_Nome": ["janeiro", "novembro"]
+  * NUNCA ignore um filtro explícito mencionado pelo usuário
+  
 - Se a pergunta usa "essa transação", "esse produto", "nele", identifique a entidade no histórico e use como filtro
-- Para filtros de mês, use a coluna temporal disponível (ex: "Data")
-- Para filtros de mês específico, use o formato que corresponde aos dados (ex: mês numérico 12 para dezembro)
+- Para filtros de mês, use a coluna temporal disponível (ex: "Data_Mes_Nome" para nomes de mês)
+- Para filtros de texto (incluindo meses), use SEMPRE minúsculas (ex: "janeiro", "eletrônicos", "sul")
 
 **Pergunta do Usuário:** "{question}"
 **Colunas Disponíveis:** {available_columns}
@@ -2249,6 +2258,51 @@ def execute_analysis_command(command: Dict[str, Any], tables: List[Dict[str, Any
                 "record_count": len(filtered_df)
             }
         
+        elif tool == "get_extremes":
+            # v11.0 FIX #8: Nova ferramenta para encontrar AMBOS máximo E mínimo
+            # Resolve: "dia com maior e menor faturamento", "produto mais caro e mais barato"
+            group_by_column = params.get("group_by_column")
+            metric_column = params.get("metric_column")
+            operation = params.get("operation", "sum")
+            
+            if group_by_column not in filtered_df.columns:
+                return {"error": f"Coluna '{group_by_column}' não encontrada"}
+            if metric_column not in filtered_df.columns:
+                return {"error": f"Coluna '{metric_column}' não encontrada"}
+            
+            # Agregar dados
+            if operation == "sum":
+                grouped = filtered_df.groupby(group_by_column)[metric_column].sum()
+            elif operation == "mean":
+                grouped = filtered_df.groupby(group_by_column)[metric_column].mean()
+            elif operation == "count":
+                grouped = filtered_df.groupby(group_by_column)[metric_column].count()
+            elif operation == "min":
+                grouped = filtered_df.groupby(group_by_column)[metric_column].min()
+            elif operation == "max":
+                grouped = filtered_df.groupby(group_by_column)[metric_column].max()
+            else:
+                return {"error": f"Operação '{operation}' não suportada"}
+            
+            # Encontrar extremos
+            max_idx = grouped.idxmax()
+            min_idx = grouped.idxmin()
+            max_value = grouped.max()
+            min_value = grouped.min()
+            
+            return {
+                "tool": tool,
+                "extremes": {
+                    "max": {group_by_column: str(max_idx), metric_column: float(max_value)},
+                    "min": {group_by_column: str(min_idx), metric_column: float(min_value)}
+                },
+                "group_by_column": group_by_column,
+                "metric_column": metric_column,
+                "operation": operation,
+                "filters": filters,
+                "record_count": len(filtered_df)
+            }
+        
         elif tool == "get_unique_values":
             column = params.get("column")
             
@@ -2383,6 +2437,14 @@ def format_analysis_result(question: str, raw_result: Dict[str, Any], api_key: s
             role = "Usuário" if msg["role"] == "user" else "DriveBot"
             history_context += f"{role}: {msg['content'][:200]}...\n"
     
+    # v11.0 FIX #9: Incluir insights do sanity check na apresentação
+    sanity_context = ""
+    if raw_result.get("sanity_insights"):
+        sanity_context = "\n\n**⚠️ ALERTAS DO SISTEMA (SANITY CHECK):**\n"
+        for insight in raw_result["sanity_insights"]:
+            sanity_context += f"- {insight}\n"
+        sanity_context += "\n**IMPORTANTE:** Você DEVE mencionar estes alertas na seção 💡 INSIGHT da sua resposta.\n"
+    
     presenter_prompt = f"""Você é o DriveBot v7.0, um assistente de análise transparente. 
 
 **REGRA ABSOLUTA:** Sua resposta DEVE seguir a estrutura do **Monólogo Analítico** de 4 partes:
@@ -2390,13 +2452,14 @@ def format_analysis_result(question: str, raw_result: Dict[str, Any], api_key: s
 1. 🎯 **OBJETIVO**: Reafirme o que o usuário pediu
 2. 📝 **PLANO DE ANÁLISE**: Liste os passos executados (numerados, específicos)
 3. 📊 **EXECUÇÃO E RESULTADO**: Apresente o resultado (tabela, número, etc)
-4. 💡 **INSIGHT**: (Opcional) Breve observação sobre o resultado
+4. 💡 **INSIGHT**: (Obrigatório se houver alertas do sistema) Observações sobre o resultado e anomalias detectadas
 
 **Contexto:**
 - Pergunta do usuário: "{question}"
 - Análise executada nos dados REAIS do Google Drive
 - Resultados abaixo são FATOS extraídos diretamente
 {history_context}
+{sanity_context}
 
 **INSTRUÇÕES CRÍTICAS:**
 - Use a estrutura de 4 partes (emojis obrigatórios)
@@ -2405,6 +2468,7 @@ def format_analysis_result(question: str, raw_result: Dict[str, Any], api_key: s
 - Use tabelas markdown quando apropriado
 - Seja direto e objetivo
 - NÃO invente dados
+- Se houver alertas do sanity check, MENCIONE-OS explicitamente na seção 💡 INSIGHT
 
 **Dados Brutos da Análise:**
 ```json
@@ -2509,6 +2573,44 @@ def handle_drivebot_followup(message: str, conversation: Dict[str, Any], api_key
             "results": all_results,
             "command_count": len(all_results)
         }
+    
+    # v11.0 FIX #9: Sanity Check Pós-Análise (detecta anomalias nos dados)
+    # Exemplo: "primeiro trimestre" mas só há dados de um mês
+    sanity_insights = []
+    
+    if not raw_result.get("multi_command") and "error" not in raw_result:
+        try:
+            # Verificar anomalias em rankings/time_series/filtered_data
+            if raw_result.get("tool") in ["get_ranking", "get_time_series", "get_filtered_data"]:
+                data_list = raw_result.get("ranking") or raw_result.get("time_series") or raw_result.get("data", [])
+                
+                if data_list and len(data_list) > 0:
+                    # Criar DataFrame temporário
+                    temp_df = pd.DataFrame(data_list)
+                    
+                    # SANITY CHECK 1: Verificar se filtro temporal retornou apenas um mês
+                    # quando a pergunta sugere múltiplos períodos
+                    if 'Data_Mes_Nome' in temp_df.columns:
+                        unique_months = temp_df['Data_Mes_Nome'].unique()
+                        if len(unique_months) == 1:
+                            sanity_insights.append(
+                                f"⚠️ Todos os {len(data_list)} registros encontrados são do mês de {unique_months[0]}. "
+                                f"Pode haver dados limitados para o período solicitado."
+                            )
+                    
+                    # SANITY CHECK 2: Verificar se há muitos valores nulos
+                    null_ratio = temp_df.isnull().sum().sum() / (len(temp_df) * len(temp_df.columns))
+                    if null_ratio > 0.3:
+                        sanity_insights.append(
+                            f"⚠️ Atenção: {null_ratio*100:.1f}% dos dados retornados contêm valores ausentes."
+                        )
+        except Exception as e:
+            print(f"[DriveBot] Erro no sanity check: {e}")
+            pass
+    
+    # Adicionar insights ao resultado
+    if sanity_insights:
+        raw_result["sanity_insights"] = sanity_insights
     
     # Se houver erro no resultado único, tratar de forma mais elegante
     if "error" in raw_result and not raw_result.get("multi_command"):
