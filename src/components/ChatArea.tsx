@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useBot } from '../contexts/BotContext'
 import MessageBubble from './MessageBubble'
-import { Paperclip, Send, X, Menu } from 'lucide-react'
+import { Paperclip, Send, X, Menu, BarChart2, Gem } from 'lucide-react'
 
 export default function ChatArea() {
   const { active, messages, send, isTyping } = useBot()
@@ -140,7 +140,7 @@ ${periodSection}
     ? 'Descreva sua análise ou anexe planilhas...'
     : 'Cole o ID ou URL da pasta do Google Drive...'
   const hasMessages = messages.length > 0
-  const botIcon = active === 'alphabot' ? '📊' : '💎'
+  const botIcon = active === 'alphabot' ? <BarChart2 size={16} /> : <Gem size={16} />
   const botTagline = active === 'alphabot'
     ? 'Envie .csv ou .xlsx e faça perguntas sobre seus dados.'
     : 'Cole o ID/URL da pasta do Google Drive para explorar arquivos.'
@@ -159,10 +159,10 @@ ${periodSection}
               <Menu size={18} />
             </button>
             <div className="w-8 h-8 rounded-md grid place-items-center bg-white/5" aria-hidden>
-              <span className="text-base">{botIcon}</span>
+              {botIcon}
             </div>
             <div>
-              <div className="font-semibold leading-none">{botName}</div>
+              <div className="leading-none font-extralight text-[var(--accent)]">{botName}</div>
               <div className="text-xs text-[var(--muted)] leading-none mt-1">{botTagline}</div>
             </div>
           </div>
@@ -173,8 +173,10 @@ ${periodSection}
       {messages.length === 0 ? (
         <div className="flex-1 grid place-items-center px-6 bg-[var(--bg-2)]">
           <div className="text-center max-w-xl">
-            <h1 className="font-black gradient-text tracking-tight" style={{fontSize: 'clamp(36px,5vw,48px)'}}>HELLO, USER</h1>
-            <p className="text-sm md:text-base text-[var(--muted)] mt-2">WELCOME TO THE {botName}</p>
+            <h1 className="tracking-tight font-extralight" style={{fontSize: 'clamp(28px,4vw,40px)'}}>
+              <span style={{ color: 'var(--accent)' }}>Welcome to the {botName}</span>
+              {/*<span style={{ color: 'var(--text)' }}>{botName}</span>*/}
+            </h1>
             <div className="mt-8 bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 shadow-xl text-left">
               {active === 'alphabot' ? (
                 <>

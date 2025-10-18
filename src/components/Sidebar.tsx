@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react'
-import { Sun, Moon, ChevronLeft, Menu } from 'lucide-react'
+import { Sun, Moon, Menu, BarChart2, Gem } from 'lucide-react'
 import { useTheme } from '../contexts/ThemeContext'
 import { useBot, BotId } from '../contexts/BotContext'
 
-const bots: { id: BotId; name: string; icon: string }[] = [
-  { id: 'alphabot', name: 'ALPHABOT', icon: '📊' },
-  { id: 'drivebot', name: 'DRIVEBOT', icon: '💎' },
+const bots: { id: BotId; name: string; icon: React.ReactNode }[] = [
+  { id: 'alphabot', name: 'ALPHABOT', icon: <BarChart2 size={18} /> },
+  { id: 'drivebot', name: 'DRIVEBOT', icon: <Gem size={18} /> },
 ]
 
 export default function Sidebar() {
@@ -37,16 +37,27 @@ export default function Sidebar() {
       )}
 
       <aside
-        className={`transition-slow z-20 flex flex-col fixed md:static h-full ${collapsed ? 'w-16' : 'w-72'} p-4 border-r border-[var(--border)] bg-[var(--sidebar)] text-[var(--text)] ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
+        className={`transition-slow z-20 flex flex-col fixed md:static h-full ${collapsed ? 'w-16 min-w-16' : 'w-72 min-w-72'} p-4 border-r border-[var(--border)] bg-[var(--sidebar)] text-[var(--text)] ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} overflow-hidden shrink-0`}
         aria-label="Sidebar de navegação"
       >
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-[var(--border)]">
           <div className="flex items-center gap-3">
-            {/* Logo alpha */}
-            <div className="w-8 h-8 rounded-md flex items-center justify-center" style={{background: 'var(--accent-gradient)'}}>
-              <span className="text-white font-black">α</span>
-            </div>
+            {/* Botão de menu (3 traços) no lugar do logo */}
+            <button
+              className="w-8 h-8 rounded-md grid place-items-center hover:bg-white/10 transition-fast focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+              aria-label="Alternar menu"
+              title="Menu"
+              onClick={() => {
+                if (window.matchMedia('(min-width: 768px)').matches) {
+                  setCollapsed((s) => !s)
+                } else {
+                  setMobileOpen((o) => !o)
+                }
+              }}
+            >
+              <Menu size={18} />
+            </button>
             {!collapsed && (
               <div>
                 <div className="text-lg font-extrabold tracking-tight">ALPHA</div>
@@ -54,16 +65,7 @@ export default function Sidebar() {
               </div>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            {/* Toggle collapse (desktop) */}
-            <button className="p-2 rounded hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-[var(--ring)] hidden md:inline-flex" onClick={() => setCollapsed(s => !s)} aria-label="Alternar largura da barra lateral">
-              <ChevronLeft size={18} className={`${collapsed ? 'rotate-180' : ''} transition-transform`} />
-            </button>
-            {/* Mobile hamburger */}
-            <button className="p-2 rounded hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-[var(--ring)] md:hidden" aria-label="Fechar menu" onClick={() => setMobileOpen(o => !o)}>
-              <Menu size={18} />
-            </button>
-          </div>
+          {/* Sem controles do lado direito - apenas o menu do lado esquerdo */}
         </div>
 
         {/* Bots */}
@@ -74,7 +76,7 @@ export default function Sidebar() {
               const isActive = active === b.id
               const iconClass = collapsed
                 ? `w-11 h-11 rounded-xl grid place-items-center transition-transform ${isActive ? 'bg-[var(--accent)] text-white ring-1 ring-[var(--accent)]/40' : 'bg-white/5 hover:bg-white/10 hover:scale-[1.02]'}`
-                : `w-8 h-8 rounded-md flex items-center justify-center ${isActive ? 'bg-white/10' : 'bg-white/5'}`
+                : `w-8 h-8 rounded-md grid place-items-center ${isActive ? 'bg-white/10 text-[var(--text)]' : 'bg-white/5 text-[var(--muted)]'}`
               const buttonClass = collapsed
                 ? 'pressable p-1 rounded-lg transition-fast focus:outline-none focus:ring-2 focus:ring-[var(--ring)] grid place-items-center'
                 : `pressable flex items-center gap-3 p-3 rounded-lg transition-fast focus:outline-none focus:ring-2 focus:ring-[var(--ring)] ${isActive ? 'bg-[var(--accent)] text-white' : 'hover:bg-white/5 text-[var(--text)]'}`
