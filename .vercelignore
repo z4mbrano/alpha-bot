@@ -1,0 +1,53 @@
+# Arquivos Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+backend/venv/
+backend/__pycache__/
+backend/src/__pycache__/
+backend/src/**/__pycache__/
+
+# Node
+node_modules/
+
+# Build
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Git
+.git/
+.gitignore
+
+# Documentation (não precisa no deploy)
+docs/
+scripts/
+*.md
+!README.md
+
+# Backups
+*_backup.py
+app_original_backup.py
+app_new.py
+
+# Tests
+backend/test_*.py
+backend/validate_*.py

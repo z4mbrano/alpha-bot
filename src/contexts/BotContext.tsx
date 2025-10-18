@@ -1,5 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 
+// API Base URL - usa variável de ambiente ou localhost para desenvolvimento
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+
 export type BotId = 'alphabot' | 'drivebot'
 
 export type Message = {
@@ -104,7 +107,7 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
           throw new Error('Por favor, anexe planilhas (.csv, .xlsx) primeiro usando o botão de anexo.')
         }
 
-        const response = await fetch('http://localhost:5000/api/alphabot/chat', {
+        const response = await fetch(`${API_BASE_URL}/api/alphabot/chat`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -133,7 +136,7 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
         
       } else {
         // DriveBot usa endpoint original
-        const response = await fetch('http://localhost:5000/api/chat', {
+        const response = await fetch(`${API_BASE_URL}/api/chat`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

@@ -1,0 +1,42 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "backend/app.py",
+      "use": "@vercel/python",
+      "config": {
+        "maxLambdaSize": "50mb"
+      }
+    },
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/health",
+      "dest": "/backend/app.py"
+    },
+    {
+      "src": "/api/alphabot/(.*)",
+      "dest": "/backend/app.py"
+    },
+    {
+      "src": "/api/chat",
+      "dest": "/backend/app.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ],
+  "env": {
+    "DRIVEBOT_API_KEY": "@drivebot-api-key",
+    "ALPHABOT_API_KEY": "@alphabot-api-key",
+    "GOOGLE_SERVICE_ACCOUNT_INFO": "@google-service-account-info"
+  }
+}
