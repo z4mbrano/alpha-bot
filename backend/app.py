@@ -1383,6 +1383,28 @@ A resposta entregue ao usuário (formulada pelo Júri) deve SEMPRE seguir esta e
 - **Insights Adicionais:** Observações valiosas que você descobriu durante a análise e que podem ser úteis, mesmo que não tenham sido diretamente perguntadas.
 - **Limitações e Contexto:** (Se aplicável) Uma nota transparente sobre qualquer limitação ou contexto importante. (Ex: "É importante notar que os dados do arquivo X não continham a coluna 'Região', portanto não foram incluídos neste ranking regional.")
 
+# REGRAS DE FORMATAÇÃO
+- **Use Markdown de forma limpa:**
+  - Use **negrito** apenas para destacar termos importantes (não exagere)
+  - Use títulos (##, ###) para seções
+  - Use listas (-, *) para enumerações
+  
+- **Tabelas Markdown:**
+  - SEMPRE alinhe as colunas corretamente
+  - Use espaços para manter o alinhamento visual
+  - Formato correto:
+    ```
+    | Coluna 1       | Coluna 2    | Coluna 3 |
+    |----------------|-------------|----------|
+    | Valor alinhado | Outro valor | 123.45   |
+    | Mais dados     | Mais info   | 678.90   |
+    ```
+
+- **Números:**
+  - Valores monetários: R$ 1.234,56
+  - Percentuais: 45,7%
+  - Grandes números: 1.234.567 (com separador de milhares)
+
 # REGRAS ADICIONAIS
 - **Stateless:** Você não tem memória de arquivos de conversas anteriores. Cada nova sessão de anexos é um novo universo de dados.
 - **Foco no Anexo:** Se o usuário fizer uma pergunta sobre dados sem ter anexado arquivos primeiro, lembre-o gentilmente de que você precisa de um anexo para começar a análise.
@@ -1737,6 +1759,66 @@ def format_date(date_value: Optional[pd.Timestamp]) -> Optional[str]:
     if pd.isna(timestamp):
         return None
     return timestamp.strftime('%d/%m/%Y')
+
+
+def clean_markdown_formatting(text: str) -> str:
+    """
+    Limpa formatação Markdown excessiva ou mal formatada.
+    
+    - Remove ** duplicados ou excessivos
+    - Corrige tabelas desalinhadas
+    - Melhora espaçamento
+    """
+    if not text:
+        return text
+    
+    # 1. Remover múltiplos asteriscos consecutivos (** ** ** vira **)
+    text = re.sub(r'\*{3,}', '**', text)  # ***texto*** → **texto**
+    text = re.sub(r'\*\*\s+\*\*', '**', text)  # ** ** → **
+    
+    # 2. Corrigir ** no meio de palavras
+    text = re.sub(r'(\w)\*\*(\w)', r'\1\2', text)  # pal**avra → palavra
+    
+    # 3. Remover ** órfãos (sem fechamento na mesma linha)
+    lines = text.split('\n')
+    cleaned_lines = []
+    for line in lines:
+        # Contar ** na linha
+        bold_count = line.count('**')
+        # Se ímpar, há um ** sem par - remover o último
+        if bold_count % 2 != 0:
+            # Encontrar a última ocorrência e remover
+            last_idx = line.rfind('**')
+            if last_idx != -1:
+                line = line[:last_idx] + line[last_idx+2:]
+        cleaned_lines.append(line)
+    text = '\n'.join(cleaned_lines)
+    
+    # 4. Melhorar tabelas Markdown
+    # Detectar linhas de tabela e garantir alinhamento mínimo
+    lines = text.split('\n')
+    cleaned_lines = []
+    in_table = False
+    
+    for i, line in enumerate(lines):
+        # Detectar linha de tabela (contém |)
+        if '|' in line and line.strip().startswith('|'):
+            in_table = True
+            # Adicionar espaço antes e depois de cada |
+            line = re.sub(r'\s*\|\s*', ' | ', line)
+            # Remover espaços duplos
+            line = re.sub(r'\s{2,}', ' ', line)
+        elif in_table and '|' not in line:
+            in_table = False
+        
+        cleaned_lines.append(line)
+    
+    text = '\n'.join(cleaned_lines)
+    
+    # 5. Limpar espaçamentos excessivos
+    text = re.sub(r'\n{4,}', '\n\n\n', text)  # Máximo 2 linhas em branco
+    
+    return text.strip()
 
 
 def build_discovery_report(summary: Dict[str, Any]) -> str:
@@ -2547,10 +2629,24 @@ def format_analysis_result(question: str, raw_result: Dict[str, Any], api_key: s
 - Use a estrutura de 4 partes (emojis obrigatórios)
 - No Plano de Análise, seja ESPECÍFICO (mencione colunas e filtros exatos)
 - Se a pergunta é continuação (usa pronomes), CONFIRME a entidade no Objetivo
-- Use tabelas markdown quando apropriado
 - Seja direto e objetivo
 - NÃO invente dados
 - Se houver alertas do sanity check, MENCIONE-OS explicitamente na seção 💡 INSIGHT
+
+**FORMATAÇÃO OBRIGATÓRIA:**
+- Use **negrito** apenas para termos importantes (não exagere com asteriscos)
+- Tabelas Markdown DEVEM ser bem formatadas:
+  ```
+  | Produto     | Quantidade | Valor      |
+  |-------------|------------|------------|
+  | Notebook    | 150        | R$ 450.000 |
+  | Mouse       | 500        | R$ 15.000  |
+  ```
+- Alinhe colunas com espaços
+- Evite tabelas com mais de 5 colunas
+- Para dados extensos, mostre Top 10 + total
+- Valores monetários: R$ 1.234,56
+- Percentuais: 45,7%
 
 **Dados Brutos da Análise:**
 ```json
@@ -2567,6 +2663,9 @@ def format_analysis_result(question: str, raw_result: Dict[str, Any], api_key: s
         
         if not response_text:
             return "Desculpe, não consegui formatar a resposta. Aqui estão os dados brutos:\n\n" + json.dumps(raw_result, indent=2, ensure_ascii=False, default=str)
+        
+        # Aplicar limpeza de formatação Markdown
+        response_text = clean_markdown_formatting(response_text)
         
         return response_text
     except Exception as e:
@@ -2907,8 +3006,8 @@ def alphabot_upload():
     Aceita arquivos .csv e .xlsx, consolida em um único DataFrame,
     cria colunas auxiliares temporais e armazena em sessão.
     """
-    # Extensões permitidas
-    ALLOWED_EXTENSIONS = {'csv', 'xlsx'}
+    # Extensões permitidas (todos os formatos comuns de planilhas)
+    ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls', 'ods', 'tsv'}
     
     def allowed_file(filename):
         return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -2945,7 +3044,7 @@ def alphabot_upload():
             if not allowed_file(filename):
                 files_failed.append({
                     "filename": filename,
-                    "reason": "Formato de arquivo não suportado (apenas .csv e .xlsx)"
+                    "reason": "Formato de arquivo não suportado (aceitos: .csv, .xlsx, .xls, .ods, .tsv)"
                 })
                 continue
             
@@ -2954,9 +3053,46 @@ def alphabot_upload():
                 file_extension = filename.rsplit('.', 1)[1].lower()
                 
                 if file_extension == 'csv':
-                    df = pd.read_csv(file, encoding='utf-8')
-                elif file_extension == 'xlsx':
-                    df = pd.read_excel(file)
+                    # Tentar múltiplos encodings para CSV (comum em planilhas brasileiras)
+                    encodings_to_try = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1', 'utf-8-sig']
+                    df = None
+                    last_error = None
+                    
+                    for encoding in encodings_to_try:
+                        try:
+                            # Resetar posição do arquivo
+                            file.seek(0)
+                            # Tentar ler com o encoding atual, detectando automaticamente o separador
+                            df = pd.read_csv(file, encoding=encoding, sep=None, engine='python')
+                            print(f"[AlphaBot] ✅ Arquivo {filename} lido com encoding: {encoding}")
+                            break
+                        except (UnicodeDecodeError, pd.errors.ParserError) as e:
+                            last_error = e
+                            continue
+                    
+                    if df is None:
+                        raise Exception(f"Não foi possível ler o arquivo CSV com nenhum encoding testado. Último erro: {last_error}")
+                
+                elif file_extension in ['xlsx', 'xls']:
+                    df = pd.read_excel(file, engine='openpyxl' if file_extension == 'xlsx' else None)
+                
+                elif file_extension == 'ods':
+                    df = pd.read_excel(file, engine='odf')
+                
+                elif file_extension == 'tsv':
+                    # TSV (Tab-separated values)
+                    encodings_to_try = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']
+                    df = None
+                    for encoding in encodings_to_try:
+                        try:
+                            file.seek(0)
+                            df = pd.read_csv(file, encoding=encoding, sep='\t')
+                            break
+                        except:
+                            continue
+                    if df is None:
+                        raise Exception("Não foi possível ler o arquivo TSV")
+                
                 else:
                     files_failed.append({
                         "filename": filename,
@@ -3157,6 +3293,9 @@ Apresente APENAS a resposta final do Júri ao usuário.
         
         response = model.generate_content(validation_prompt)
         answer = response.text.strip()
+        
+        # Aplicar limpeza de formatação Markdown
+        answer = clean_markdown_formatting(answer)
         
         return jsonify({
             "answer": answer,
