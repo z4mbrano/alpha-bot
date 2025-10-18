@@ -1,11 +1,21 @@
+import io
+import json
 import os
+import re
 import uuid
+from datetime import datetime
 from collections import deque
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
+import pandas as pd
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import google.generativeai as genai
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaIoBaseDownload
 from dotenv import load_dotenv
 
 # Carregar variáveis de ambiente
@@ -17,6 +27,58 @@ CORS(app)  # Permitir requisições do frontend
 # Configurar APIs do Google AI
 DRIVEBOT_API_KEY = os.getenv('DRIVEBOT_API_KEY')
 ALPHABOT_API_KEY = os.getenv('ALPHABOT_API_KEY')
+
+GOOGLE_SCOPES = [
+    'https://www.googleapis.com/auth/drive.readonly',
+    'https://www.googleapis.com/auth/spreadsheets.readonly',
+]
+GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv('GOOGLE_SERVICE_ACCOUNT_FILE')
+GOOGLE_SERVICE_ACCOUNT_INFO = os.getenv('GOOGLE_SERVICE_ACCOUNT_INFO')
+GOOGLE_CREDENTIALS: Optional[service_account.Credentials] = None
+
+MONTH_ALIASES = {
+    'janeiro': 1,
+    'jan': 1,
+    'fevereiro': 2,
+    'fev': 2,
+    'março': 3,
+    'marco': 3,
+    'mar': 3,
+    'abril': 4,
+    'abr': 4,
+    'maio': 5,
+    'junho': 6,
+    'julho': 7,
+    'agosto': 8,
+    'setembro': 9,
+    'set': 9,
+    'outubro': 10,
+    'out': 10,
+    'novembro': 11,
+    'nov': 11,
+    'dezembro': 12,
+    'dez': 12,
+}
+MONTH_TRANSLATION = {name: datetime(2000, number, 1).strftime('%B') for name, number in MONTH_ALIASES.items()}
+MONTH_NAMES_PT = {
+    1: 'janeiro',
+    2: 'fevereiro',
+    3: 'março',
+    4: 'abril',
+    5: 'maio',
+    6: 'junho',
+    7: 'julho',
+    8: 'agosto',
+    9: 'setembro',
+    10: 'outubro',
+    11: 'novembro',
+    12: 'dezembro',
+}
+
+EXCEL_MIME_TYPES = {
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel',
+}
 
 # Armazenamento simples em memória para conversas
 MAX_HISTORY_MESSAGES = 12
@@ -189,6 +251,397 @@ Responda às perguntas baseando-se estritamente nos dados dos arquivos anexados 
 """
 
 
+def get_google_credentials() -> service_account.Credentials:
+    """Obtém credenciais de serviço para acessar Google Drive e Sheets."""
+    global GOOGLE_CREDENTIALS
+
+    if GOOGLE_CREDENTIALS is not None:
+        return GOOGLE_CREDENTIALS
+
+    try:
+        if GOOGLE_SERVICE_ACCOUNT_INFO:
+            info = json.loads(GOOGLE_SERVICE_ACCOUNT_INFO)
+            credentials = service_account.Credentials.from_service_account_info(info, scopes=GOOGLE_SCOPES)
+        elif GOOGLE_SERVICE_ACCOUNT_FILE:
+            if not os.path.exists(GOOGLE_SERVICE_ACCOUNT_FILE):
+                raise RuntimeError(
+                    "Arquivo de credenciais informado em GOOGLE_SERVICE_ACCOUNT_FILE não foi encontrado."
+                )
+            credentials = service_account.Credentials.from_service_account_file(
+                GOOGLE_SERVICE_ACCOUNT_FILE,
+                scopes=GOOGLE_SCOPES,
+            )
+        else:
+            raise RuntimeError(
+                "Credenciais não configuradas. Defina GOOGLE_SERVICE_ACCOUNT_FILE com o caminho do JSON "
+                "da service account ou GOOGLE_SERVICE_ACCOUNT_INFO com o conteúdo JSON."
+            )
+    except Exception as error:
+        raise RuntimeError(f"Erro ao carregar credenciais do Google: {error}") from error
+
+    GOOGLE_CREDENTIALS = credentials
+    return credentials
+
+
+def get_google_services() -> Tuple[Any, Any]:
+    """Inicializa clientes do Google Drive e Sheets utilizando as credenciais configuradas."""
+    credentials = get_google_credentials()
+    drive_service = build('drive', 'v3', credentials=credentials, cache_discovery=False)
+    sheets_service = build('sheets', 'v4', credentials=credentials, cache_discovery=False)
+    return drive_service, sheets_service
+
+
+def normalize_decimal_string(value: Any) -> Optional[str]:
+    """Normaliza strings com valores decimais para formato padrão."""
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return None
+
+    if isinstance(value, (int, float, np.number)):
+        return str(value)
+
+    text = str(value).strip()
+    if not text or text.lower() in {'nan', 'none', 'null'}:
+        return None
+
+    # Remove símbolos comuns
+    text = text.replace('R$', '').replace('%', '').replace(' ', '')
+    text = text.replace('\t', '').replace('\n', '').replace('\r', '')
+    text = text.replace('\u00a0', '')  # Non-breaking space
+
+    # Normaliza separadores decimais
+    if text.count(',') == 1 and text.count('.') >= 1:
+        # Formato: 1.234,56 -> 1234.56
+        text = text.replace('.', '').replace(',', '.')
+    elif text.count(',') > 0:
+        # Formato: 1234,56 -> 1234.56
+        text = text.replace(',', '.')
+
+    return text
+def coerce_numeric_series(series: pd.Series) -> pd.Series:
+    if pd.api.types.is_numeric_dtype(series):
+        return pd.to_numeric(series, errors='coerce')
+
+    normalized = series.astype(str).map(normalize_decimal_string)
+    return pd.to_numeric(normalized, errors='coerce')
+
+
+def detect_numeric_columns(df: pd.DataFrame) -> Tuple[List[str], Dict[str, pd.Series]]:
+    numeric_columns: List[str] = []
+    numeric_data: Dict[str, pd.Series] = {}
+
+    for column in df.columns:
+        coerced = coerce_numeric_series(df[column])
+        if coerced.notna().sum() >= max(1, int(len(coerced) * 0.3)):
+            numeric_columns.append(column)
+            numeric_data[column] = coerced
+
+    return numeric_columns, numeric_data
+
+
+def normalize_month_text(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+
+    text = value.strip()
+    lower = text.lower()
+    for pt_name, eng_name in MONTH_TRANSLATION.items():
+        if pt_name in lower:
+            lower = lower.replace(pt_name, eng_name.lower())
+    return lower
+
+
+def detect_datetime_columns(df: pd.DataFrame) -> Dict[str, pd.Series]:
+    datetime_columns: Dict[str, pd.Series] = {}
+
+    for column in df.columns:
+        series = df[column]
+        if pd.api.types.is_datetime64_any_dtype(series):
+            parsed = pd.to_datetime(series, errors='coerce')
+        else:
+            normalized = series.astype(str).map(normalize_month_text)
+            parsed = pd.to_datetime(normalized, errors='coerce', dayfirst=True)
+
+        if parsed.notna().sum() >= max(1, int(len(parsed) * 0.3)):
+            parsed.name = column
+            datetime_columns[column] = parsed
+
+    return datetime_columns
+
+
+def detect_text_columns(df: pd.DataFrame, numeric_columns: List[str]) -> List[str]:
+    text_columns: List[str] = []
+    numeric_set = set(numeric_columns)
+
+    for column in df.columns:
+        if column in numeric_set:
+            continue
+        series = df[column]
+        if pd.api.types.is_string_dtype(series) or series.dtype == object:
+            if series.astype(str).str.strip().replace('', np.nan).notna().sum() > 0:
+                text_columns.append(column)
+
+    return text_columns
+
+
+def month_number_to_name(month: int) -> str:
+    return MONTH_NAMES_PT.get(month, str(month))
+
+
+def build_temporal_mask(table: Dict[str, Any], year: Optional[int] = None, month: Optional[int] = None) -> Optional[pd.Series]:
+    datetime_columns: Dict[str, pd.Series] = table.get('datetime_columns', {})
+    if not datetime_columns:
+        return None
+
+    combined_mask: Optional[pd.Series] = None
+    for parsed in datetime_columns.values():
+        mask = parsed.notna()
+        if year is not None:
+            mask &= parsed.dt.year == year
+        if month is not None:
+            mask &= parsed.dt.month == month
+        if combined_mask is None:
+            combined_mask = mask
+        else:
+            combined_mask |= mask
+
+    return combined_mask
+
+
+def prepare_table(table_name: str, df: pd.DataFrame) -> Dict[str, Any]:
+    processed = df.copy()
+    processed.columns = [str(col).strip() for col in processed.columns]
+    processed = processed.replace('', np.nan)
+
+    numeric_columns, numeric_data = detect_numeric_columns(processed)
+    datetime_columns = detect_datetime_columns(processed)
+    text_columns = detect_text_columns(processed, numeric_columns)
+
+    return {
+        'name': table_name,
+        'df': processed,
+        'row_count': int(len(processed)),
+        'columns': list(processed.columns),
+        'numeric_columns': numeric_columns,
+        'numeric_data': numeric_data,
+        'datetime_columns': datetime_columns,
+        'text_columns': text_columns,
+    }
+
+
+def download_file_bytes(drive_service: Any, file_id: str) -> bytes:
+    request = drive_service.files().get_media(fileId=file_id)
+    fh = io.BytesIO()
+    downloader = MediaIoBaseDownload(fh, request)
+
+    done = False
+    while not done:
+        _status, done = downloader.next_chunk()
+
+    return fh.getvalue()
+
+
+def load_csv_tables(drive_service: Any, file_meta: Dict[str, Any]) -> List[Dict[str, Any]]:
+    content = download_file_bytes(drive_service, file_meta['id'])
+    df = pd.read_csv(io.BytesIO(content))
+    return [prepare_table(file_meta['name'], df)]
+
+
+def load_excel_tables(drive_service: Any, file_meta: Dict[str, Any]) -> List[Dict[str, Any]]:
+    content = download_file_bytes(drive_service, file_meta['id'])
+    workbook = pd.read_excel(io.BytesIO(content), sheet_name=None)
+    tables: List[Dict[str, Any]] = []
+    for sheet_name, df in workbook.items():
+        table_name = f"{file_meta['name']} - {sheet_name}"
+        tables.append(prepare_table(table_name, df))
+    return tables
+
+
+def build_discovery_summary(
+    tables: List[Dict[str, Any]],
+    files_ok: List[str],
+    files_failed: List[Dict[str, str]],
+) -> Dict[str, Any]:
+    total_records = sum(table['row_count'] for table in tables)
+    all_columns = set()
+    numeric_columns = set()
+    text_columns = set()
+    start_dates: List[pd.Timestamp] = []
+    end_dates: List[pd.Timestamp] = []
+
+    for table in tables:
+        all_columns.update(table['columns'])
+        numeric_columns.update(table['numeric_columns'])
+        text_columns.update(table['text_columns'])
+
+        for parsed in table['datetime_columns'].values():
+            valid = parsed.dropna()
+            if not valid.empty:
+                start_dates.append(valid.min())
+                end_dates.append(valid.max())
+
+    if start_dates and end_dates:
+        date_range: Tuple[Optional[pd.Timestamp], Optional[pd.Timestamp]] = (
+            min(start_dates),
+            max(end_dates),
+        )
+    else:
+        date_range = (None, None)
+
+    domains: List[str] = []
+    if numeric_columns:
+        domains.append('numérico')
+    if text_columns:
+        domains.append('categórico')
+    if any(date_range):
+        domains.append('temporal')
+
+    return {
+        'files_ok': files_ok,
+        'files_failed': files_failed,
+        'total_records': int(total_records),
+        'columns': sorted(filter(None, all_columns)),
+        'numeric_columns': sorted(numeric_columns),
+        'text_columns': sorted(text_columns),
+        'date_range': date_range,
+        'domains': domains,
+    }
+
+
+def format_date(date_value: Optional[pd.Timestamp]) -> Optional[str]:
+    if date_value is None or (isinstance(date_value, float) and np.isnan(date_value)):
+        return None
+    try:
+        timestamp = pd.to_datetime(date_value)
+    except Exception:
+        return None
+    if pd.isna(timestamp):
+        return None
+    return timestamp.strftime('%d/%m/%Y')
+
+
+def build_discovery_report(summary: Dict[str, Any]) -> str:
+    files_ok = summary['files_ok']
+    files_failed = summary['files_failed']
+    date_range = summary['date_range']
+
+    files_ok_md = '\n'.join(f"- {name}" for name in files_ok) or '- Nenhum arquivo processado com sucesso.'
+    files_failed_md = '\n'.join(
+        f"- {entry['name']} (Motivo: {entry['reason']})" for entry in files_failed
+    ) or '- Nenhum arquivo apresentou falha.'
+
+    start_text = format_date(date_range[0])
+    end_text = format_date(date_range[1])
+    if start_text and end_text:
+        period_text = f"{start_text} até {end_text}"
+    elif start_text or end_text:
+        period_text = start_text or end_text
+    else:
+        period_text = 'Não identificado'
+
+    numeric_cols_md = ', '.join(f"`{col}`" for col in summary['numeric_columns']) or 'Nenhum identificado'
+    text_cols_md = ', '.join(f"`{col}`" for col in summary['text_columns']) or 'Nenhum identificado'
+
+    domains_md = ', '.join(summary['domains']) if summary['domains'] else 'Não identificado'
+
+    return (
+        "## 🔍 Processo de Descoberta Concluído\n\n"
+        "**Status da Exploração:** Mapeamento dos dados finalizado.\n\n"
+        "### 📁 Arquivos Processados com Sucesso\n"
+        f"{files_ok_md}\n\n"
+        "### ⚠️ Arquivos com Falha\n"
+        f"{files_failed_md}\n\n"
+        "---\n\n"
+        "### 🗺️ Mapa da Estrutura Descoberta\n\n"
+        f"- **Total de Registros Mapeados:** {summary['total_records']}\n"
+        f"- **Período Temporal Identificado:** {period_text}\n"
+        f"- **Domínios de Dados Encontrados:** {domains_md}\n\n"
+        "**Elementos Estruturais**\n"
+        f"- **Campos Numéricos:** {numeric_cols_md}\n"
+        f"- **Campos Categóricos/Textuais:** {text_cols_md}\n"
+    )
+
+
+def ingest_drive_folder(drive_id: str) -> Dict[str, Any]:
+    drive_service, sheets_service = get_google_services()
+
+    try:
+        response = drive_service.files().list(
+            q=f"'{drive_id}' in parents and trashed=false",
+            fields="files(id,name,mimeType,modifiedTime)",
+        ).execute()
+    except HttpError as error:
+        raise RuntimeError(f"Erro ao acessar a pasta do Google Drive: {error}") from error
+
+    files = response.get('files', [])
+    if not files:
+        raise RuntimeError("Nenhum arquivo encontrado na pasta informada. Verifique o ID e as permissões.")
+
+    tables: List[Dict[str, Any]] = []
+    files_ok: List[str] = []
+    files_failed: List[Dict[str, str]] = []
+
+    for file_meta in files:
+        mime_type = file_meta.get('mimeType')
+        try:
+            if mime_type == 'application/vnd.google-apps.spreadsheet':
+                spreadsheet = sheets_service.spreadsheets().get(
+                    spreadsheetId=file_meta['id'],
+                    includeGridData=False,
+                ).execute()
+                sheets = spreadsheet.get('sheets', [])
+                if not sheets:
+                    files_failed.append({'name': file_meta['name'], 'reason': 'Planilha sem abas válidas'})
+                    continue
+
+                for sheet in sheets:
+                    title = sheet['properties']['title']
+                    range_name = f"'{title}'!A1:ZZZ"
+                    values_response = sheets_service.spreadsheets().values().get(
+                        spreadsheetId=file_meta['id'],
+                        range=range_name,
+                    ).execute()
+                    values = values_response.get('values', [])
+                    if len(values) < 1:
+                        continue
+
+                    header, *rows = values
+                    if not header:
+                        continue
+                    df = pd.DataFrame(rows, columns=header)
+                    table_name = f"{file_meta['name']} - {title}"
+                    tables.append(prepare_table(table_name, df))
+
+                files_ok.append(file_meta['name'])
+            elif mime_type == 'text/csv':
+                tables.extend(load_csv_tables(drive_service, file_meta))
+                files_ok.append(file_meta['name'])
+            elif mime_type in EXCEL_MIME_TYPES:
+                tables.extend(load_excel_tables(drive_service, file_meta))
+                files_ok.append(file_meta['name'])
+            else:
+                files_failed.append({'name': file_meta['name'], 'reason': f'Formato não suportado ({mime_type})'})
+        except HttpError as error:
+            files_failed.append({'name': file_meta['name'], 'reason': f'Erro ao ler o arquivo: {error}'})
+        except Exception as error:
+            files_failed.append({'name': file_meta['name'], 'reason': str(error)})
+
+    if not tables:
+        raise RuntimeError(
+            'Não foi possível processar nenhum arquivo da pasta. Convert a planilhas Google ou CSV e confira as permissões.'
+        )
+
+    summary = build_discovery_summary(tables, files_ok, files_failed)
+    report = build_discovery_report(summary)
+
+    return {
+        'tables': tables,
+        'summary': summary,
+        'report': report,
+        'files_ok': files_ok,
+        'files_failed': files_failed,
+    }
+
+
 def ensure_conversation(conversation_id: str, bot_id: str) -> Dict[str, Any]:
     conversation = CONVERSATION_STORE.get(conversation_id)
     if conversation is None or conversation.get("bot_id") != bot_id:
@@ -198,7 +651,11 @@ def ensure_conversation(conversation_id: str, bot_id: str) -> Dict[str, Any]:
             "drive": {
                 "drive_id": None,
                 "report": None,
-                "profile": None,
+                "summary": None,
+                "tables": [],
+                "files_ok": [],
+                "files_failed": [],
+                "last_refresh": None,
             },
         }
         CONVERSATION_STORE[conversation_id] = conversation
@@ -214,122 +671,53 @@ def list_history(conversation: Dict[str, Any]) -> List[Dict[str, str]]:
 
 
 def build_discovery_bundle(drive_id: str) -> Dict[str, Any]:
-    profile = {
-        "drive_id": drive_id,
-        "files_ok": [
-            "vendas_mensais_2024.xlsx",
-            "produtos_catalogo.csv",
-            "clientes_dados.xlsx",
-            "regional_performance.csv",
-        ],
-        "files_failed": [
-            {"name": "backup_antigo.xls", "reason": "Formato legado não suportado"},
-            {"name": "relatorio_final.pdf", "reason": "Formato não estruturado"},
-        ],
-        "dimensions": {
-            "total_records": 2847,
-            "total_records_fmt": "2.847",
-            "period": "Jan/2024 a Dez/2024",
-            "domains": ["temporal", "numérico", "categórico", "geográfico"],
-        },
-        "elements": {
-            "numeric": [
-                "valor_venda",
-                "quantidade",
-                "preco_unitario",
-                "desconto_aplicado",
-                "margem_contribuicao",
-            ],
-            "temporal": ["data_transacao", "mes_ref", "ano_fiscal"],
-            "categorical": [
-                "categoria_produto",
-                "regiao_venda",
-                "canal_venda",
-                "status_pedido",
-            ],
-            "identifiers": ["id_cliente", "codigo_produto", "id_vendedor", "numero_pedido"],
-            "text": ["nome_produto", "observacoes_venda", "endereco_entrega"],
-        },
-        "relationships": [
-            "Forte correlação entre valor_venda e quantidade",
-            "Padrão sazonal identificado nos campos temporais",
-            "Agrupamento natural por regiao_venda detectado",
-            "Hierarquia categoria_produto → subcategoria mapeada",
-        ],
-        "metrics": {
-            "total_revenue": 18742650.0,
-            "total_revenue_fmt": "R$ 18.742.650,00",
-            "revenue_by_region": [
-                {"label": "Sudeste", "fmt": "R$ 7.045.300,00", "share": "37%"},
-                {"label": "Sul", "fmt": "R$ 4.218.740,00", "share": "23%"},
-                {"label": "Nordeste", "fmt": "R$ 3.962.580,00", "share": "21%"},
-                {"label": "Centro-Oeste", "fmt": "R$ 2.164.030,00", "share": "12%"},
-                {"label": "Norte", "fmt": "R$ 1.351.000,00", "share": "7%"},
-            ],
-            "monthly_trend": [
-                {"label": "Jan/2024", "fmt": "R$ 1.342.800,00"},
-                {"label": "Fev/2024", "fmt": "R$ 1.278.450,00"},
-                {"label": "Mar/2024", "fmt": "R$ 1.512.230,00"},
-                {"label": "Abr/2024", "fmt": "R$ 1.487.510,00"},
-                {"label": "Mai/2024", "fmt": "R$ 1.562.780,00"},
-                {"label": "Jun/2024", "fmt": "R$ 1.604.120,00"},
-                {"label": "Jul/2024", "fmt": "R$ 1.720.450,00"},
-                {"label": "Ago/2024", "fmt": "R$ 1.689.330,00"},
-                {"label": "Set/2024", "fmt": "R$ 1.674.890,00"},
-                {"label": "Out/2024", "fmt": "R$ 1.556.310,00"},
-                {"label": "Nov/2024", "fmt": "R$ 1.742.280,00"},
-                {"label": "Dez/2024", "fmt": "R$ 1.571.900,00"},
-            ],
-            "top_categories": [
-                {"label": "Tecnologia", "fmt": "R$ 4.110.250,00", "share": "22%"},
-                {"label": "Casa & Estilo", "fmt": "R$ 3.842.170,00", "share": "20%"},
-                {"label": "Escritório", "fmt": "R$ 2.968.450,00", "share": "16%"},
-            ],
-        },
-    }
+    """
+    VERSÃO REAL: Conecta ao Google Drive, lê os arquivos e retorna dados reais.
+    """
+    try:
+        # Tentar ler dados reais do Google Drive
+        ingestion_result = ingest_drive_folder(drive_id)
+        
+        # Retornar os dados reais
+        return {
+            "report": ingestion_result["report"],
+            "profile": None,  # Não usado mais na nova arquitetura
+            "tables": ingestion_result["tables"],
+            "summary": ingestion_result["summary"],
+            "files_ok": ingestion_result["files_ok"],
+            "files_failed": ingestion_result["files_failed"],
+        }
+    
+    except Exception as e:
+        print(f"[DriveBot] Erro ao acessar Google Drive: {e}")
+        
+        # Fallback: retornar erro explicativo
+        error_report = f"""## ⚠️ Erro ao Conectar com Google Drive
 
-    files_ok = "\n".join(f"- {name}" for name in profile["files_ok"])
-    files_failed = "\n".join(
-        f"- {entry['name']} (Motivo: {entry['reason']})" for entry in profile["files_failed"]
-    ) or "- Nenhuma ocorrência"
+**Erro:** {str(e)}
 
-    elements = profile["elements"]
-    relationships = "\n".join(f"- {rel}" for rel in profile["relationships"])
+**Possíveis Causas:**
+1. O ID da pasta está incorreto
+2. A pasta não foi compartilhada com a Service Account
+3. As APIs do Google Drive/Sheets não estão habilitadas
+4. As credenciais não estão configuradas corretamente
 
-    report = f"""## 🔍 Processo de Descoberta Concluído
+**Como Resolver:**
+1. Verifique se o ID está correto: `{drive_id}`
+2. Compartilhe a pasta com: `id-spreadsheet-reader-robot@data-analytics-gc-475218.iam.gserviceaccount.com`
+3. Dê permissão de **Viewer** (leitura)
 
-**Status da Exploração:** Mapeamento dos dados finalizado.
-
-### 📁 Arquivos Descobertos e Processados
-{files_ok}
-
-### ⚠️ Arquivos Não Processáveis
-{files_failed}
-
----
-
-### 🗺️ Mapa da Estrutura Descoberta
-
-**Dimensões dos Dados**
-- **Total de Registros Mapeados:** {profile['dimensions']['total_records_fmt']} registros
-- **Período Temporal Identificado:** {profile['dimensions']['period']}
-- **Domínios de Dados Encontrados:** {', '.join(profile['dimensions']['domains'])}
-
-**Elementos Estruturais**
-- **Campos Numéricos:** {', '.join(f"`{c}`" for c in elements['numeric'])}
-- **Campos Temporais:** {', '.join(f"`{c}`" for c in elements['temporal'])}
-- **Campos Categóricos:** {', '.join(f"`{c}`" for c in elements['categorical'])}
-- **Campos Identificadores:** {', '.join(f"`{c}`" for c in elements['identifiers'])}
-- **Campos Textuais:** {', '.join(f"`{c}`" for c in elements['text'])}
-
-### 🔗 Relações e Padrões Detectados
-{relationships}
-
----
-
-**Status:** Território de dados mapeado. Pronto para exploração direcionada."""
-
-    return {"report": report, "profile": profile}
+**Para mais ajuda, consulte:** `GOOGLE_DRIVE_SETUP.md`
+"""
+        
+        return {
+            "report": error_report,
+            "profile": None,
+            "tables": [],
+            "summary": None,
+            "files_ok": [],
+            "files_failed": [{"name": "Erro de Conexão", "reason": str(e)}],
+        }
 
 
 def format_revenue_overview(profile: Dict[str, Any]) -> str:
@@ -417,24 +805,321 @@ def format_top_categories(profile: Dict[str, Any]) -> str:
     return "\n".join(segments)
 
 
-def handle_drivebot_followup(message: str, conversation: Dict[str, Any]) -> str | None:
-    drive_state = conversation.get("drive", {})
-    profile = drive_state.get("profile")
-    if not profile:
+# ============================================================================
+# ARQUITETURA DE DOIS PROMPTS: TRADUÇÃO + EXECUÇÃO + APRESENTAÇÃO
+# ============================================================================
+
+def generate_analysis_command(question: str, available_columns: List[str], api_key: str) -> Optional[Dict[str, Any]]:
+    """
+    PROMPT #1: TRADUTOR DE INTENÇÃO
+    Converte pergunta do usuário em comando JSON estruturado para análise de dados.
+    """
+    translator_prompt = f"""Você é um especialista em análise de dados que traduz perguntas em linguagem natural para comandos executáveis em JSON.
+
+**Contexto:**
+- O usuário está interagindo com um dataset real carregado do Google Drive.
+- As colunas disponíveis neste dataset são: {available_columns}
+
+**Sua Tarefa:**
+Com base na pergunta do usuário, escolha UMA das seguintes ferramentas e forneça os parâmetros necessários em formato JSON puro. 
+Não adicione nenhuma outra explicação, markdown, ou texto extra. APENAS o JSON válido.
+
+**Ferramentas Disponíveis:**
+
+1. **calculate_metric**: Para calcular uma única métrica agregada
+   Exemplo: {{"tool": "calculate_metric", "params": {{"metric_column": "valor_venda", "operation": "sum", "filters": {{"regiao": "Sul"}}}}}}
+   Operações: sum, mean, count, min, max
+
+2. **get_ranking**: Para criar um ranking agrupando dados
+   Exemplo: {{"tool": "get_ranking", "params": {{"group_by_column": "nome_produto", "metric_column": "quantidade", "operation": "sum", "filters": {{"mes_ref": "Jan/2024"}}, "top_n": 5, "ascending": false}}}}
+
+3. **get_unique_values**: Para listar valores únicos de uma coluna
+   Exemplo: {{"tool": "get_unique_values", "params": {{"column": "regiao_venda"}}}}
+
+4. **get_time_series**: Para análise temporal/evolução ao longo do tempo
+   Exemplo: {{"tool": "get_time_series", "params": {{"time_column": "mes_ref", "metric_column": "valor_venda", "operation": "sum", "group_by_column": "regiao"}}}}
+
+**Pergunta do Usuário:** "{question}"
+**Colunas Disponíveis:** {available_columns}
+
+**JSON de Saída (APENAS JSON, SEM TEXTO EXTRA):**"""
+
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        response = model.generate_content(translator_prompt)
+        response_text = (response.text or "").strip()
+        
+        # Limpar markdown se houver
+        response_text = response_text.replace('```json', '').replace('```', '').strip()
+        
+        command = json.loads(response_text)
+        return command
+    except Exception as e:
+        print(f"Erro ao gerar comando de análise: {e}")
+        print(f"Resposta recebida: {response_text if 'response_text' in locals() else 'N/A'}")
         return None
 
-    normalized = message.lower()
 
-    if "faturamento" in normalized or "valor_venda" in normalized or "receita" in normalized:
-        return format_revenue_overview(profile)
+def execute_analysis_command(command: Dict[str, Any], tables: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """
+    Executa o comando JSON nos dados REAIS do DataFrame.
+    """
+    if not tables:
+        return {"error": "Nenhum dado disponível para análise"}
+    
+    tool = command.get("tool")
+    params = command.get("params", {})
+    
+    # Combinar todos os DataFrames em um só (assumindo estrutura similar)
+    try:
+        all_dfs = []
+        for table in tables:
+            df = table.get("df")
+            if df is not None and not df.empty:
+                all_dfs.append(df)
+        
+        if not all_dfs:
+            return {"error": "Nenhum DataFrame válido encontrado"}
+        
+        # Usar o primeiro DataFrame (ou combinar se necessário)
+        df = all_dfs[0] if len(all_dfs) == 1 else pd.concat(all_dfs, ignore_index=True)
+        
+    except Exception as e:
+        return {"error": f"Erro ao processar DataFrames: {str(e)}"}
+    
+    # Aplicar filtros
+    filters = params.get("filters", {})
+    filtered_df = df.copy()
+    for column, value in filters.items():
+        if column in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df[column] == value]
+    
+    # Executar ferramenta
+    try:
+        if tool == "calculate_metric":
+            metric_column = params.get("metric_column")
+            operation = params.get("operation", "sum")
+            
+            if metric_column not in filtered_df.columns:
+                return {"error": f"Coluna '{metric_column}' não encontrada"}
+            
+            if operation == "sum":
+                result = filtered_df[metric_column].sum()
+            elif operation == "mean":
+                result = filtered_df[metric_column].mean()
+            elif operation == "count":
+                result = len(filtered_df)
+            elif operation == "min":
+                result = filtered_df[metric_column].min()
+            elif operation == "max":
+                result = filtered_df[metric_column].max()
+            else:
+                return {"error": f"Operação '{operation}' não suportada"}
+            
+            return {
+                "tool": tool,
+                "result": float(result) if pd.notna(result) else None,
+                "metric_column": metric_column,
+                "operation": operation,
+                "filters": filters,
+                "record_count": len(filtered_df)
+            }
+        
+        elif tool == "get_ranking":
+            group_by_column = params.get("group_by_column")
+            metric_column = params.get("metric_column")
+            operation = params.get("operation", "sum")
+            top_n = params.get("top_n", 10)
+            ascending = params.get("ascending", False)
+            
+            if group_by_column not in filtered_df.columns:
+                return {"error": f"Coluna '{group_by_column}' não encontrada"}
+            if metric_column not in filtered_df.columns:
+                return {"error": f"Coluna '{metric_column}' não encontrada"}
+            
+            if operation == "sum":
+                grouped = filtered_df.groupby(group_by_column)[metric_column].sum()
+            elif operation == "mean":
+                grouped = filtered_df.groupby(group_by_column)[metric_column].mean()
+            elif operation == "count":
+                grouped = filtered_df.groupby(group_by_column)[metric_column].count()
+            else:
+                return {"error": f"Operação '{operation}' não suportada"}
+            
+            ranked = grouped.sort_values(ascending=ascending).head(top_n)
+            
+            return {
+                "tool": tool,
+                "ranking": [
+                    {group_by_column: str(idx), metric_column: float(val)}
+                    for idx, val in ranked.items()
+                ],
+                "group_by_column": group_by_column,
+                "metric_column": metric_column,
+                "operation": operation,
+                "filters": filters,
+                "record_count": len(filtered_df)
+            }
+        
+        elif tool == "get_unique_values":
+            column = params.get("column")
+            
+            if column not in filtered_df.columns:
+                return {"error": f"Coluna '{column}' não encontrada"}
+            
+            unique_values = filtered_df[column].dropna().unique().tolist()
+            
+            return {
+                "tool": tool,
+                "column": column,
+                "unique_values": [str(v) for v in unique_values],
+                "count": len(unique_values)
+            }
+        
+        elif tool == "get_time_series":
+            time_column = params.get("time_column")
+            metric_column = params.get("metric_column")
+            operation = params.get("operation", "sum")
+            group_by_column = params.get("group_by_column")
+            
+            if time_column not in filtered_df.columns:
+                return {"error": f"Coluna '{time_column}' não encontrada"}
+            if metric_column not in filtered_df.columns:
+                return {"error": f"Coluna '{metric_column}' não encontrada"}
+            
+            if group_by_column and group_by_column in filtered_df.columns:
+                if operation == "sum":
+                    grouped = filtered_df.groupby([time_column, group_by_column])[metric_column].sum()
+                elif operation == "mean":
+                    grouped = filtered_df.groupby([time_column, group_by_column])[metric_column].mean()
+                else:
+                    grouped = filtered_df.groupby([time_column, group_by_column])[metric_column].count()
+                
+                result_data = grouped.reset_index().to_dict('records')
+            else:
+                if operation == "sum":
+                    grouped = filtered_df.groupby(time_column)[metric_column].sum()
+                elif operation == "mean":
+                    grouped = filtered_df.groupby(time_column)[metric_column].mean()
+                else:
+                    grouped = filtered_df.groupby(time_column)[metric_column].count()
+                
+                result_data = [
+                    {time_column: str(idx), metric_column: float(val)}
+                    for idx, val in grouped.items()
+                ]
+            
+            return {
+                "tool": tool,
+                "time_series": result_data,
+                "time_column": time_column,
+                "metric_column": metric_column,
+                "operation": operation,
+                "filters": filters
+            }
+        
+        else:
+            return {"error": f"Ferramenta '{tool}' não reconhecida"}
+    
+    except Exception as e:
+        return {"error": f"Erro ao executar análise: {str(e)}"}
 
-    if "regi" in normalized and ("ranking" in normalized or "top" in normalized or "maior" in normalized):
-        return format_region_ranking(profile)
 
-    if "categoria" in normalized and ("top" in normalized or "maior" in normalized or "desta" in normalized):
-        return format_top_categories(profile)
+def format_analysis_result(question: str, raw_result: Dict[str, Any], api_key: str) -> str:
+    """
+    PROMPT #2: APRESENTADOR DE RESULTADOS
+    Formata os resultados REAIS da análise em uma resposta bem apresentada.
+    """
+    if "error" in raw_result:
+        return f"⚠️ **Erro na análise:** {raw_result['error']}\n\nPor favor, reformule sua pergunta ou verifique se os dados estão disponíveis."
+    
+    presenter_prompt = f"""Você é o DriveBot, um assistente de análise de dados. Sua tarefa é apresentar os resultados de uma análise de forma clara e profissional para o usuário.
 
-    return None
+**Contexto:**
+- O usuário perguntou: "{question}"
+- Uma análise foi executada nos dados REAIS do Google Drive.
+- Os resultados abaixo são FATOS extraídos diretamente dos dados.
+
+**Sua Tarefa:**
+Apresente os dados brutos a seguir em uma resposta bem formatada usando Markdown. 
+- Use tabelas quando apropriado
+- Adicione uma breve observação ou insight se apropriado
+- Seja direto e objetivo
+- NÃO use a estrutura [EXPLORADOR]/[INVESTIGADOR]
+- NÃO invente dados adicionais
+- Use emojis para deixar mais amigável
+
+---
+**Dados Brutos da Análise:**
+```json
+{json.dumps(raw_result, indent=2, ensure_ascii=False)}
+```
+
+**Resposta Formatada:**"""
+
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        response = model.generate_content(presenter_prompt)
+        response_text = (response.text or "").strip()
+        
+        if not response_text:
+            return "Desculpe, não consegui formatar a resposta. Aqui estão os dados brutos:\n\n" + json.dumps(raw_result, indent=2, ensure_ascii=False)
+        
+        return response_text
+    except Exception as e:
+        print(f"Erro ao formatar resultado: {e}")
+        return "Desculpe, não consegui formatar a resposta. Aqui estão os dados brutos:\n\n" + json.dumps(raw_result, indent=2, ensure_ascii=False)
+
+
+def handle_drivebot_followup(message: str, conversation: Dict[str, Any], api_key: str) -> str | None:
+    """
+    Processa perguntas do usuário sobre dados já descobertos usando arquitetura de dois prompts.
+    """
+    drive_state = conversation.get("drive", {})
+    tables = drive_state.get("tables", [])
+    
+    if not tables:
+        return None
+    
+    # Extrair colunas disponíveis de todas as tabelas
+    all_columns = set()
+    for table in tables:
+        df = table.get("df")
+        if df is not None and not df.empty:
+            all_columns.update(df.columns.tolist())
+    
+    available_columns = sorted(list(all_columns))
+    
+    if not available_columns:
+        return None
+    
+    # FASE 1: Traduzir pergunta em comando JSON
+    print(f"[DriveBot] Traduzindo pergunta: {message}")
+    command = generate_analysis_command(message, available_columns, api_key)
+    
+    if not command:
+        print("[DriveBot] Falha ao gerar comando de análise")
+        return None
+    
+    print(f"[DriveBot] Comando gerado: {json.dumps(command, indent=2)}")
+    
+    # FASE 2: Executar comando nos dados REAIS
+    print(f"[DriveBot] Executando análise nos dados reais...")
+    raw_result = execute_analysis_command(command, tables)
+    
+    if not raw_result:
+        print("[DriveBot] Falha ao executar análise")
+        return None
+    
+    print(f"[DriveBot] Resultado da análise: {json.dumps(raw_result, indent=2)}")
+    
+    # FASE 3: Formatar resultado em resposta amigável
+    print(f"[DriveBot] Formatando resultado...")
+    formatted_response = format_analysis_result(message, raw_result, api_key)
+    
+    return formatted_response
 
 def get_bot_response(bot_id: str, message: str, conversation_id: str | None = None) -> Dict[str, Any]:
     """Gera resposta usando Google AI para o bot específico com memória de conversa simples."""
@@ -490,7 +1175,10 @@ def get_bot_response(bot_id: str, message: str, conversation_id: str | None = No
                 drive_state.update({
                     "drive_id": drive_id,
                     "report": bundle["report"],
-                    "profile": bundle["profile"],
+                    "tables": bundle["tables"],  # CRÍTICO: Armazenar os DataFrames reais
+                    "summary": bundle["summary"],
+                    "files_ok": bundle["files_ok"],
+                    "files_failed": bundle["files_failed"],
                 })
 
                 header = (
@@ -512,7 +1200,7 @@ def get_bot_response(bot_id: str, message: str, conversation_id: str | None = No
                 append_message(conversation, "assistant", response_text)
                 return {"response": response_text, "conversation_id": conversation_id}
 
-            manual_answer = handle_drivebot_followup(message, conversation)
+            manual_answer = handle_drivebot_followup(message, conversation, api_key)
             if manual_answer:
                 append_message(conversation, "assistant", manual_answer)
                 return {"response": manual_answer, "conversation_id": conversation_id}
@@ -537,7 +1225,7 @@ def get_bot_response(bot_id: str, message: str, conversation_id: str | None = No
 
         try:
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            model = genai.GenerativeModel('gemini-2.5-flash')
         except Exception as config_error:
             print(f"Erro na configuração da API: {config_error}")
             if bot_id == 'drivebot':
