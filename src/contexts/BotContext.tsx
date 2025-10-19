@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import type { ChartData } from '../types'
 
 // Mapa de mensagens de erro amigáveis
@@ -276,6 +277,11 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       // Em caso de erro, mostrar mensagem amigável
       const friendlyMessage = getFriendlyErrorMessage(error)
+      
+      // 🚀 SPRINT 2: Toast notification para erros
+      toast.error('Erro ao processar mensagem', {
+        description: friendlyMessage.substring(0, 100)
+      })
       
       const errorMsg: Message = {
         id: 'e-' + Date.now(),

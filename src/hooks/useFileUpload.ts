@@ -4,6 +4,7 @@
  */
 
 import { useState, useCallback } from 'react'
+import { toast } from 'sonner'
 import { uploadAlphabotFiles } from '../services/api'
 import type { FileUploadState, AlphabotUploadResponse } from '../types'
 
@@ -47,11 +48,13 @@ export function useFileUpload() {
       })
 
       if (invalidFiles.length > 0) {
+        const errorMsg = `Arquivos inválidos: ${invalidFiles.map((f) => f.name).join(', ')}. Apenas CSV e XLSX são permitidos.`
         setState((prev) => ({
           ...prev,
           status: 'error',
-          error: `Arquivos inválidos: ${invalidFiles.map((f) => f.name).join(', ')}. Apenas CSV e XLSX são permitidos.`,
+          error: errorMsg,
         }))
+        toast.error(`❌ ${errorMsg}`)
         return null
       }
 
@@ -60,6 +63,8 @@ export function useFileUpload() {
         status: 'uploading',
         progress: { loaded: 0, total: 0, percentage: 0 },
       })
+
+      toast.loading('📎 Enviando arquivos...', { id: 'file-upload' })
 
       try {
         const response = await uploadAlphabotFiles(files, (progress) => {
@@ -75,6 +80,11 @@ export function useFileUpload() {
           response,
         })
 
+        toast.success(`✅ ${response.files_count} arquivo(s) processado(s)!`, { 
+          id: 'file-upload',
+          description: `${response.total_rows} registros carregados`
+        })
+
         return response
       } catch (error) {
         const errorMsg =
@@ -84,6 +94,11 @@ export function useFileUpload() {
           status: 'error',
           progress: { loaded: 0, total: 0, percentage: 0 },
           error: errorMsg,
+        })
+
+        toast.error(`❌ Erro ao enviar arquivos`, { 
+          id: 'file-upload',
+          description: errorMsg
         })
 
         return null

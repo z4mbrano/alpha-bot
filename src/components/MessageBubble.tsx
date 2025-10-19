@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
 import { Copy, Check, Sparkles, Download } from 'lucide-react'
+import { toast } from 'sonner'
 import { Message } from '../contexts/BotContext'
 import { exportAlphabotToExcel, exportDrivebotToExcel } from '../services/api'
 import ChartRenderer from './ChartRenderer'
@@ -17,8 +18,10 @@ export default function MessageBubble({ m, onSendMessage }: { m: Message; onSend
       await navigator.clipboard.writeText(m.text)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+      toast.success('✅ Texto copiado para a área de transferência!')
     } catch (err) {
       console.error('Erro ao copiar:', err)
+      toast.error('❌ Erro ao copiar texto')
     }
   }
 
@@ -28,12 +31,14 @@ export default function MessageBubble({ m, onSendMessage }: { m: Message; onSend
       
       if (m.botId === 'alphabot' && m.sessionId) {
         await exportAlphabotToExcel(m.sessionId)
+        toast.success('📊 Dados exportados com sucesso!')
       } else if (m.botId === 'drivebot' && m.conversationId) {
         await exportDrivebotToExcel(m.conversationId)
+        toast.success('📊 Dados do Drive exportados com sucesso!')
       }
     } catch (err) {
       console.error('Erro ao fazer download:', err)
-      alert('Erro ao exportar dados. Tente novamente.')
+      toast.error('❌ Erro ao exportar dados. Tente novamente.')
     } finally {
       setDownloading(false)
     }
