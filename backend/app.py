@@ -1462,6 +1462,41 @@ A resposta entregue ao usuário (formulada pelo Júri) deve SEMPRE seguir esta e
 # REGRAS ADICIONAIS
 - **Stateless:** Você não tem memória de arquivos de conversas anteriores. Cada nova sessão de anexos é um novo universo de dados.
 - **Foco no Anexo:** Se o usuário fizer uma pergunta sobre dados sem ter anexado arquivos primeiro, lembre-o gentilmente de que você precisa de um anexo para começar a análise.
+
+# GERAÇÃO DE GRÁFICOS
+Se o usuário pedir explicitamente para **"gerar um gráfico"**, **"plotar"**, **"mostrar um gráfico"**, **"criar um gráfico"**, etc., sua resposta DEVE ser um JSON formatado contendo DUAS chaves: `markdown_answer` e `chart_data`.
+
+**Estrutura da Resposta com Gráfico:**
+```json
+{
+  "markdown_answer": "Aqui está a análise do faturamento mensal:\\n\\n[Sua resposta completa em Markdown]",
+  "chart_data": {
+    "type": "bar",
+    "title": "Faturamento Mensal 2024",
+    "labels": ["Janeiro", "Fevereiro", "Março", "Abril", "Maio"],
+    "datasets": [
+      {
+        "label": "Faturamento (R$)",
+        "data": [1084997.91, 990121.09, 983898.08, 1050234.56, 1123456.78]
+      }
+    ]
+  }
+}
+```
+
+**Tipos de Gráfico Suportados:**
+- `"bar"`: Gráfico de barras (comparações, rankings)
+- `"line"`: Gráfico de linhas (evolução temporal, tendências)
+- `"pie"`: Gráfico de pizza (distribuições, proporções)
+
+**Regras para `chart_data`:**
+- `labels`: Array de strings para o eixo X (meses, categorias, produtos, etc.)
+- `datasets[].data`: Array de números correspondentes aos labels
+- `datasets[].label`: Nome da série de dados (ex: "Vendas", "Faturamento", "Quantidade")
+- Os arrays `labels` e `data` devem ter o MESMO tamanho
+- Use valores numéricos reais dos dados (sem formatação de moeda)
+
+**Importante:** Se NENHUM gráfico for solicitado, responda apenas com o texto em Markdown como sempre fez. NÃO retorne JSON nesses casos.
 """
 
 # Armazenamento global para sessões do AlphaBot
@@ -3834,18 +3869,53 @@ Apresente APENAS a resposta final do Júri ao usuário.
         response = model.generate_content(validation_prompt)
         answer = response.text.strip()
         
+        # 🚀 SPRINT 2 - FEATURE 3 MELHORADO: Tentar parse como JSON (para gráficos sob demanda)
+        llm_json_response = None
+        try:
+            # Tentar limpar e parsear como JSON
+            json_start = answer.find('{')
+            json_end = answer.rfind('}') + 1
+            
+            if json_start != -1 and json_end > json_start:
+                json_str = answer[json_start:json_end]
+                llm_json_response = json.loads(json_str)
+                print(f"[ALPHABOT] ✅ IA retornou JSON estruturado com gráfico")
+                
+                # Extrair a resposta em markdown e os dados do gráfico
+                answer = llm_json_response.get('markdown_answer', answer)
+                chart_from_llm = llm_json_response.get('chart_data', None)
+                
+                # Validar estrutura do gráfico
+                if chart_from_llm and isinstance(chart_from_llm, dict):
+                    required_keys = ['type', 'labels', 'datasets']
+                    if all(key in chart_from_llm for key in required_keys):
+                        print(f"[ALPHABOT] ✅ Gráfico válido do tipo '{chart_from_llm['type']}'")
+                    else:
+                        print(f"[ALPHABOT] ⚠️ Estrutura de gráfico inválida, ignorando")
+                        chart_from_llm = None
+            else:
+                raise ValueError("Não é JSON")
+                
+        except (json.JSONDecodeError, ValueError):
+            # Não é JSON, é só Markdown normal
+            print(f"[ALPHABOT] ℹ️ IA retornou apenas Markdown (sem gráfico)")
+            llm_json_response = None
+            chart_from_llm = None
+        
         # Aplicar limpeza de formatação Markdown
         answer = clean_markdown_formatting(answer)
         
         # 🚀 SPRINT 2: Gerar sugestões de perguntas (follow-up)
         suggestions = generate_follow_up_questions(message, answer, metadata)
         
-        # 🚀 SPRINT 2 - FEATURE 3: Gerar gráfico automático se apropriado
-        chart_data = None
-        if should_include_chart(message, df, metadata):
+        # 🚀 SPRINT 2 - FEATURE 3: Gráfico (priorizar o que a IA gerou)
+        chart_data = chart_from_llm if llm_json_response else None
+        
+        # Se a IA não gerou gráfico, mas detectamos keywords, gerar automaticamente (fallback)
+        if not chart_data and should_include_chart(message, df, metadata):
             chart_data = generate_chart_data(df, message, metadata)
             if chart_data:
-                print(f"[GRÁFICO] Incluindo gráfico do tipo '{chart_data['type']}' com {len(chart_data['data'])} pontos")
+                print(f"[GRÁFICO AUTOMÁTICO] Incluindo gráfico do tipo '{chart_data['type']}' com {len(chart_data['data'])} pontos")
         
         # Preparar resposta
         response_data = {
@@ -3858,7 +3928,7 @@ Apresente APENAS a resposta final do Júri ao usuário.
             }
         }
         
-        # Adicionar gráfico se gerado
+        # Adicionar gráfico se gerado (pela IA ou automaticamente)
         if chart_data:
             response_data["chart"] = chart_data
         
