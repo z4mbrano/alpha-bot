@@ -1,27 +1,41 @@
-import React from 'react'
+import React, { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
+import { Copy, Check } from 'lucide-react'
 import { Message } from '../contexts/BotContext'
 
 export default function MessageBubble({ m }: { m: Message }) {
   const isUser = m.author === 'user'
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(m.text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Erro ao copiar:', err)
+    }
+  }
+
   return (
-    <div className={`max-w-[70%] ${isUser ? 'self-end text-white' : 'self-start text-[var(--text)]'} my-1.5`}> 
-      <div
-        className={
-          isUser
-            ? 'bg-[var(--accent)] bg-[image:var(--accent-gradient)] rounded-tl-2xl rounded-bl-2xl rounded-br-xl p-3 shadow-sm'
-            : 'bg-[var(--surface)]/95 backdrop-blur border border-[var(--border)]/60 text-[var(--text)] rounded-tr-2xl rounded-br-2xl rounded-bl-xl p-3 shadow-sm'
-        }
-      >
-        {isUser ? (
-          // Mensagens do usuário: texto simples
-          <div className="text-sm whitespace-pre-wrap message-content">{m.text}</div>
-        ) : (
-          // Mensagens do bot: renderizar Markdown
-          <div className="text-sm message-content markdown-body">
-            <ReactMarkdown
+    <div className={`max-w-[70%] ${isUser ? 'self-end text-white' : 'self-start text-[var(--text)]'} my-1.5 group`}> 
+      <div className="relative">
+        <div
+          className={
+            isUser
+              ? 'bg-[var(--accent)] bg-[image:var(--accent-gradient)] rounded-tl-2xl rounded-bl-2xl rounded-br-xl p-3 shadow-sm'
+              : 'bg-[var(--surface)]/95 backdrop-blur border border-[var(--border)]/60 text-[var(--text)] rounded-tr-2xl rounded-br-2xl rounded-bl-xl p-3 shadow-sm'
+          }
+        >
+          {isUser ? (
+            // Mensagens do usuário: texto simples
+            <div className="text-sm whitespace-pre-wrap message-content">{m.text}</div>
+          ) : (
+            // Mensagens do bot: renderizar Markdown
+            <div className="text-sm message-content markdown-body">
+              <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeRaw]}
               components={{
@@ -89,6 +103,22 @@ export default function MessageBubble({ m }: { m: Message }) {
               {m.text}
             </ReactMarkdown>
           </div>
+        )}
+        </div>
+        
+        {/* Botão de copiar - apenas para mensagens do bot */}
+        {!isUser && (
+          <button
+            onClick={handleCopy}
+            className="absolute -right-10 top-2 p-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--bg)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+            title={copied ? 'Copiado!' : 'Copiar resposta'}
+          >
+            {copied ? (
+              <Check size={14} className="text-green-400" />
+            ) : (
+              <Copy size={14} className="text-[var(--muted)]" />
+            )}
+          </button>
         )}
       </div>
     </div>

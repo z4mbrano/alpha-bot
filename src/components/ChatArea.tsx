@@ -1,7 +1,29 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useBot } from '../contexts/BotContext'
 import MessageBubble from './MessageBubble'
-import { Paperclip, Send, X, Menu, BarChart2, Gem } from 'lucide-react'
+import { Paperclip, Send, X, Menu, BarChart2, Gem, Loader2, Trash2 } from 'lucide-react'
+
+// Mapa de mensagens de erro amigáveis para upload
+const UPLOAD_ERROR_MESSAGES: Record<string, string> = {
+  'Failed to fetch': '🔴 Não foi possível conectar ao servidor. Verifique sua internet.',
+  'NetworkError': '🔴 Erro de conexão. Tente novamente.',
+  'File too large': '📦 Um ou mais arquivos são muito grandes (máx 10MB cada).',
+  'Invalid file': '📄 Arquivo inválido. Use apenas .csv, .xlsx, .xls, .ods ou .tsv.',
+  '500': '⚠️ Erro no servidor ao processar arquivos. Tente novamente.',
+  '413': '📦 Arquivos muito grandes. Reduza o tamanho ou envie menos arquivos.',
+}
+
+function getUploadErrorMessage(error: unknown): string {
+  const errorText = error instanceof Error ? error.message : String(error)
+  
+  for (const [key, msg] of Object.entries(UPLOAD_ERROR_MESSAGES)) {
+    if (errorText.includes(key)) {
+      return msg
+    }
+  }
+  
+  return `❌ Erro ao enviar arquivos: ${errorText}`
+}
 
 // API Base URL - Em produção usa caminhos relativos, em dev usa localhost
 const API_BASE_URL = import.meta.env.PROD 
@@ -9,9 +31,10 @@ const API_BASE_URL = import.meta.env.PROD
   : (import.meta.env.VITE_API_URL || 'http://localhost:5000') // Dev: localhost
 
 export default function ChatArea() {
-  const { active, messages, send, addMessage, isTyping } = useBot()
+  const { active, messages, send, addMessage, clearConversation, isTyping } = useBot()
   const [text, setText] = useState('')
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [isUploading, setIsUploading] = useState(false)
   const feedRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -49,6 +72,8 @@ export default function ChatArea() {
 
   const handleUploadFiles = async () => {
     if (selectedFiles.length === 0) return
+    
+    setIsUploading(true)
     
     const formData = new FormData()
     selectedFiles.forEach(file => {
@@ -141,19 +166,23 @@ ${periodSection}
           id: 'b-' + Date.now(),
           author: 'bot',
           botId: active,
-          text: `❌ Erro no upload: ${data.message}`,
+          text: `❌ **Erro no upload**\n\n${data.message}\n\n💡 Verifique se os arquivos estão no formato correto (.csv, .xlsx, .xls, .ods, .tsv).`,
           time: Date.now(),
         })
       }
     } catch (error) {
+      const friendlyMessage = getUploadErrorMessage(error)
+      
       addMessage({
         id: 'b-' + Date.now(),
         author: 'bot',
         botId: active,
-        text: `❌ Erro ao enviar arquivos: ${error}`,
+        text: friendlyMessage,
         time: Date.now(),
       })
       setSelectedFiles([])
+    } finally {
+      setIsUploading(false)
     }
   }
 
@@ -178,21 +207,36 @@ ${periodSection}
       {/* Header when there are messages */}
       {hasMessages && (
         <header className="sticky top-0 z-10 px-4 md:px-8 py-3 md:py-4 border-b border-[var(--border)] bg-[var(--sidebar)]/90 backdrop-blur app-shell">
-          <div className="max-w-[900px] mx-auto flex items-center gap-3">
+          <div className="max-w-[900px] mx-auto flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <button
+                className="md:hidden p-2 rounded hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+                aria-label="Abrir menu"
+                onClick={() => window.dispatchEvent(new Event('alpha:toggle-sidebar'))}
+              >
+                <Menu size={18} />
+              </button>
+              <div className="w-8 h-8 rounded-md grid place-items-center bg-white/5" aria-hidden>
+                {botIcon}
+              </div>
+              <div>
+                <div className="leading-none font-extralight text-[var(--accent)]">{botName}</div>
+                <div className="text-xs text-[var(--muted)] leading-none mt-1">{botTagline}</div>
+              </div>
+            </div>
+            
+            {/* Botão Limpar Conversa */}
             <button
-              className="md:hidden p-2 rounded hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
-              aria-label="Abrir menu"
-              onClick={() => window.dispatchEvent(new Event('alpha:toggle-sidebar'))}
+              onClick={() => {
+                if (confirm('Deseja limpar toda a conversa? Esta ação não pode ser desfeita.')) {
+                  clearConversation()
+                }
+              }}
+              className="p-2 rounded hover:bg-red-500/10 text-red-400 transition-fast focus:outline-none focus:ring-2 focus:ring-red-500/50"
+              title="Limpar conversa"
             >
-              <Menu size={18} />
+              <Trash2 size={16} />
             </button>
-            <div className="w-8 h-8 rounded-md grid place-items-center bg-white/5" aria-hidden>
-              {botIcon}
-            </div>
-            <div>
-              <div className="leading-none font-extralight text-[var(--accent)]">{botName}</div>
-              <div className="text-xs text-[var(--muted)] leading-none mt-1">{botTagline}</div>
-            </div>
           </div>
         </header>
       )}
@@ -302,7 +346,7 @@ ${periodSection}
               />
               <button
                 onClick={() => fileInputRef.current?.click()}
-                disabled={isTyping}
+                disabled={isTyping || isUploading}
                 className="p-2 rounded hover:bg-white/5 transition-fast disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
                 title="Anexar planilhas (.csv, .xlsx)"
               >
@@ -311,20 +355,42 @@ ${periodSection}
             </>
           )}
           
+          {/* Botão de upload - aparece quando há arquivos selecionados */}
+          {active === 'alphabot' && selectedFiles.length > 0 && (
+            <button
+              onClick={handleUploadFiles}
+              disabled={isUploading}
+              className="px-3 py-2 rounded-md bg-[var(--accent)] text-white text-sm hover:bg-[var(--accent-hover)] transition-fast disabled:opacity-50 flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>Enviando...</span>
+                </>
+              ) : (
+                <span>📎 Enviar {selectedFiles.length}</span>
+              )}
+            </button>
+          )}
+          
           <input 
             value={text} 
             onChange={e => setText(e.target.value)} 
             onKeyDown={e => e.key === 'Enter' && !isTyping && onSend()} 
             placeholder={placeholderText} 
-            disabled={isTyping}
+            disabled={isTyping || isUploading}
             className="flex-1 bg-transparent outline-none placeholder:text-[var(--muted)] text-[var(--text)] px-2 py-2 md:py-2 disabled:opacity-50" 
           />
           <button 
             onClick={onSend} 
-            disabled={isTyping || !text.trim()}
-            className={`p-2.5 rounded-md text-white transition-fast focus:outline-none focus:ring-2 focus:ring-[var(--ring)] ${text.trim()? 'bg-[var(--accent)] hover:bg-[var(--accent-hover)]' : 'bg-[var(--border)] text-gray-400 cursor-not-allowed'}`}
+            disabled={isTyping || isUploading || !text.trim()}
+            className={`p-2.5 rounded-md text-white transition-fast focus:outline-none focus:ring-2 focus:ring-[var(--ring)] flex items-center gap-2 ${text.trim() && !isTyping && !isUploading ? 'bg-[var(--accent)] hover:bg-[var(--accent-hover)]' : 'bg-[var(--border)] text-gray-400 cursor-not-allowed'}`}
           >
-            <Send size={16} />
+            {isTyping ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Send size={16} />
+            )}
           </button>
         </div>
       </footer>

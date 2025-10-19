@@ -1,5 +1,53 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 
+// Mapa de mensagens de erro amigáveis
+const ERROR_MESSAGES: Record<string, string> = {
+  // Erros de rede
+  'Failed to fetch': '🔴 Sem conexão com o servidor. Verifique sua internet e tente novamente.',
+  'NetworkError': '🔴 Erro de rede. Verifique sua conexão e tente novamente.',
+  'TypeError: Failed to fetch': '🔴 Não foi possível conectar ao servidor. Verifique se o backend está rodando.',
+  
+  // Erros específicos do AlphaBot
+  'Por favor, anexe planilhas': '📎 **Primeiro passo:** Clique no botão de anexo 📎 e envie sua planilha (.csv ou .xlsx).\n\nDepois você poderá fazer perguntas sobre os dados!',
+  'Sessão não encontrada': '⏱️ Sua sessão expirou. Por favor, envie os arquivos novamente usando o botão de anexo 📎.',
+  'session_id': '📁 Sessão não encontrada. Envie seus arquivos novamente para continuar.',
+  
+  // Erros de autenticação
+  'API key not valid': '🔑 Erro de autenticação. Entre em contato com o suporte.',
+  'Unauthorized': '🔑 Acesso não autorizado. Verifique suas credenciais.',
+  
+  // Erros de arquivo
+  'File too large': '📦 Arquivo muito grande. O tamanho máximo é 10MB.',
+  'Invalid file format': '📄 Formato de arquivo inválido. Use apenas .csv ou .xlsx.',
+  'Unsupported file': '❌ Tipo de arquivo não suportado. Use .csv, .xlsx, .xls, .ods ou .tsv.',
+  
+  // Erros do servidor
+  '500': '⚠️ Erro no servidor. Tente novamente em alguns segundos.',
+  '503': '🔧 Servidor temporariamente indisponível. Aguarde alguns instantes.',
+  '429': '⏸️ Muitas requisições. Aguarde um momento antes de tentar novamente.',
+  
+  // Erros gerais
+  'timeout': '⏱️ Tempo limite excedido. O servidor está demorando para responder.',
+  'parse': '🔧 Erro ao processar resposta do servidor. Tente novamente.',
+}
+
+/**
+ * Função para traduzir erros técnicos em mensagens amigáveis
+ */
+function getFriendlyErrorMessage(error: unknown): string {
+  const errorText = error instanceof Error ? error.message : String(error)
+  
+  // Verificar se há uma mensagem específica no mapa
+  for (const [key, friendlyMsg] of Object.entries(ERROR_MESSAGES)) {
+    if (errorText.includes(key)) {
+      return friendlyMsg
+    }
+  }
+  
+  // Mensagem genérica se não encontrar correspondência
+  return `❌ **Algo deu errado**\n\n${errorText}\n\n💡 **Dica:** Tente novamente ou recarregue a página.`
+}
+
 // API Base URL - Em produção usa caminhos relativos, em dev usa localhost
 const API_BASE_URL = import.meta.env.PROD 
   ? '' // Produção: caminhos relativos (Vercel roteia /api/* para backend)
@@ -21,12 +69,29 @@ const initialMessages: Record<BotId, Message[]> = {
   drivebot: [],
 }
 
+// Carregar histórico do localStorage
+const loadHistoryFromStorage = (): Record<BotId, Message[]> => {
+  if (typeof window === 'undefined') return initialMessages
+  
+  try {
+    const stored = window.localStorage.getItem('alpha-bot:message-history')
+    if (stored) {
+      return JSON.parse(stored) as Record<BotId, Message[]>
+    }
+  } catch (error) {
+    console.warn('Erro ao carregar histórico:', error)
+  }
+  
+  return initialMessages
+}
+
 type BotContextType = {
   active: BotId
   setActive: (b: BotId) => void
   messages: Message[]
   send: (text: string) => void
   addMessage: (message: Message) => void
+  clearConversation: () => void
   isTyping: boolean
 }
 
@@ -34,7 +99,7 @@ const BotContext = createContext<BotContextType | undefined>(undefined)
 
 export function BotProvider({ children }: { children: React.ReactNode }) {
   const [active, setActive] = useState<BotId>('alphabot')
-  const [store, setStore] = useState<Record<BotId, Message[]>>(initialMessages)
+  const [store, setStore] = useState<Record<BotId, Message[]>>(() => loadHistoryFromStorage())
   const [isTyping, setIsTyping] = useState(false)
   const storageKey = 'alpha-bot:conversation-ids'
 
@@ -82,9 +147,32 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
     }
   }, [conversationIds])
 
+  // Salvar histórico no localStorage sempre que mudar
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('alpha-bot:message-history', JSON.stringify(store))
+    }
+  }, [store])
+
   const addMessage = (message: Message) => {
     // Adiciona mensagem localmente sem chamar o backend
     setStore((s) => ({ ...s, [active]: [...s[active], message] }))
+  }
+
+  const clearConversation = () => {
+    // Limpar histórico do bot ativo
+    setStore((s) => ({ ...s, [active]: [] }))
+    
+    // Limpar session_id do AlphaBot se for o bot ativo
+    if (active === 'alphabot') {
+      localStorage.removeItem('alphabot_session_id')
+    }
+    
+    // Gerar novo conversation_id para DriveBot
+    if (active === 'drivebot') {
+      const newId = generateId()
+      setConversationIds((prev) => ({ ...prev, [active]: newId }))
+    }
   }
 
   const send = async (text: string) => {
@@ -175,12 +263,14 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
       }
 
     } catch (error) {
-      // Em caso de erro, mostrar mensagem de fallback
+      // Em caso de erro, mostrar mensagem amigável
+      const friendlyMessage = getFriendlyErrorMessage(error)
+      
       const errorMsg: Message = {
         id: 'e-' + Date.now(),
         author: 'bot',
         botId: active,
-        text: `Desculpe, ocorreu um erro ao processar sua mensagem. Por favor, verifique se o backend está rodando.\n\nErro: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
+        text: friendlyMessage,
         time: Date.now(),
       }
       setStore((s) => ({ ...s, [active]: [...s[active], errorMsg] }))
@@ -192,7 +282,7 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
   const messages = store[active]
 
   return (
-    <BotContext.Provider value={{ active, setActive, messages, send, addMessage, isTyping }}>{children}</BotContext.Provider>
+    <BotContext.Provider value={{ active, setActive, messages, send, addMessage, clearConversation, isTyping }}>{children}</BotContext.Provider>
   )
 }export const useBot = () => {
   const c = useContext(BotContext)

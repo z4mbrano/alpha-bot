@@ -3,7 +3,8 @@ import json
 import os
 import re
 import uuid
-from datetime import datetime
+import hashlib
+from datetime import datetime, timedelta
 from collections import deque
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -23,6 +24,59 @@ load_dotenv()
 
 app = Flask(__name__)
 CORS(app)  # Permitir requisições do frontend
+
+# ============================================
+# 🚀 CACHE DE RESPOSTAS (SPRINT 1 - Quick Wins)
+# ============================================
+# Cache simples em memória (substituir por Redis em produção)
+RESPONSE_CACHE: Dict[str, Dict[str, Any]] = {}
+CACHE_TTL_SECONDS = 1800  # 30 minutos
+
+def generate_cache_key(session_id: str, question: str) -> str:
+    """Gera chave única para cache baseada em session_id + question"""
+    combined = f"{session_id}:{question.lower().strip()}"
+    return hashlib.md5(combined.encode()).hexdigest()
+
+def get_cached_response(session_id: str, question: str) -> Optional[Dict[str, Any]]:
+    """Busca resposta no cache se ainda válida"""
+    cache_key = generate_cache_key(session_id, question)
+    
+    if cache_key in RESPONSE_CACHE:
+        cached = RESPONSE_CACHE[cache_key]
+        # Verificar se cache ainda é válido (TTL)
+        if datetime.now() < cached['expires_at']:
+            print(f"[CACHE HIT] ✅ Resposta encontrada no cache para: {question[:50]}...")
+            return cached['response']
+        else:
+            # Cache expirado, remover
+            print(f"[CACHE EXPIRED] ⏰ Cache expirado para: {question[:50]}...")
+            del RESPONSE_CACHE[cache_key]
+    
+    print(f"[CACHE MISS] ❌ Resposta não encontrada no cache para: {question[:50]}...")
+    return None
+
+def set_cached_response(session_id: str, question: str, response: Dict[str, Any]) -> None:
+    """Armazena resposta no cache com TTL"""
+    cache_key = generate_cache_key(session_id, question)
+    expires_at = datetime.now() + timedelta(seconds=CACHE_TTL_SECONDS)
+    
+    RESPONSE_CACHE[cache_key] = {
+        'response': response,
+        'expires_at': expires_at,
+        'created_at': datetime.now()
+    }
+    
+    print(f"[CACHE SET] 💾 Resposta armazenada no cache (expira em {CACHE_TTL_SECONDS}s)")
+    
+    # Limpeza automática: remover caches expirados (máximo 1000 entradas)
+    if len(RESPONSE_CACHE) > 1000:
+        now = datetime.now()
+        expired_keys = [k for k, v in RESPONSE_CACHE.items() if now >= v['expires_at']]
+        for key in expired_keys:
+            del RESPONSE_CACHE[key]
+        print(f"[CACHE CLEANUP] 🧹 Removidas {len(expired_keys)} entradas expiradas")
+
+# ============================================
 
 # Configurar APIs do Google AI
 DRIVEBOT_API_KEY = os.getenv('DRIVEBOT_API_KEY')
@@ -3219,6 +3273,11 @@ def alphabot_chat():
         if not session_id or not message:
             return jsonify({"error": "session_id e message são obrigatórios"}), 400
         
+        # 🚀 VERIFICAR CACHE PRIMEIRO (SPRINT 1)
+        cached_response = get_cached_response(session_id, message)
+        if cached_response:
+            return jsonify(cached_response)
+        
         # Verificar se a sessão existe
         if session_id not in ALPHABOT_SESSIONS:
             return jsonify({
@@ -3297,14 +3356,20 @@ Apresente APENAS a resposta final do Júri ao usuário.
         # Aplicar limpeza de formatação Markdown
         answer = clean_markdown_formatting(answer)
         
-        return jsonify({
+        # Preparar resposta
+        response_data = {
             "answer": answer,
             "session_id": session_id,
             "metadata": {
                 "records_analyzed": len(df),
                 "columns_available": len(df.columns)
             }
-        }), 200
+        }
+        
+        # 🚀 ARMAZENAR NO CACHE (SPRINT 1)
+        set_cached_response(session_id, message, response_data)
+        
+        return jsonify(response_data), 200
         
     except Exception as e:
         return jsonify({
