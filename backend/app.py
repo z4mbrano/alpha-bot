@@ -3966,7 +3966,7 @@ def alphabot_export():
         print(f"[EXPORT] Erro: {str(e)}")
         return jsonify({"error": f"Erro ao exportar dados: {str(e)}"}), 500
 
-@app.route('/api/drivebot/export', methods=['POST'])
+@app.route('/api/drivebot/export', methods=['POST', 'OPTIONS'])
 def drivebot_export():
     """
     Endpoint para exportar dados do DriveBot como arquivo Excel (.xlsx).
@@ -3974,6 +3974,10 @@ def drivebot_export():
     Recebe: { "conversation_id": "abc123" }
     Retorna: Arquivo Excel binário para download
     """
+    # Handle preflight OPTIONS request
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         data = request.get_json()
         

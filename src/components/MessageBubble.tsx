@@ -29,12 +29,18 @@ export default function MessageBubble({ m, onSendMessage }: { m: Message; onSend
     try {
       setDownloading(true)
       
+      console.log('[DOWNLOAD DEBUG] botId:', m.botId, 'sessionId:', m.sessionId, 'conversationId:', m.conversationId)
+      
       if (m.botId === 'alphabot' && m.sessionId) {
+        console.log('[DOWNLOAD DEBUG] Exportando AlphaBot com sessionId:', m.sessionId)
         await exportAlphabotToExcel(m.sessionId)
         toast.success('📊 Dados exportados com sucesso!')
       } else if (m.botId === 'drivebot' && m.conversationId) {
+        console.log('[DOWNLOAD DEBUG] Exportando DriveBot com conversationId:', m.conversationId)
         await exportDrivebotToExcel(m.conversationId)
         toast.success('📊 Dados do Drive exportados com sucesso!')
+      } else {
+        console.log('[DOWNLOAD DEBUG] Nenhuma condição atendida')
       }
     } catch (err) {
       console.error('Erro ao fazer download:', err)

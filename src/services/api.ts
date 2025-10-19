@@ -256,6 +256,9 @@ export async function exportAlphabotToExcel(sessionId: string): Promise<void> {
  */
 export async function exportDrivebotToExcel(conversationId: string): Promise<void> {
   try {
+    console.log('[EXPORT DRIVEBOT] Iniciando export com conversationId:', conversationId)
+    console.log('[EXPORT DRIVEBOT] URL:', `${API_BASE_URL}/api/drivebot/export`)
+    
     const response = await fetch(`${API_BASE_URL}/api/drivebot/export`, {
       method: 'POST',
       headers: {
@@ -264,8 +267,12 @@ export async function exportDrivebotToExcel(conversationId: string): Promise<voi
       body: JSON.stringify({ conversation_id: conversationId }),
     })
 
+    console.log('[EXPORT DRIVEBOT] Response status:', response.status)
+    console.log('[EXPORT DRIVEBOT] Response ok:', response.ok)
+
     if (!response.ok) {
       const errorData = await response.json()
+      console.log('[EXPORT DRIVEBOT] Error data:', errorData)
       throw new ApiError(
         errorData.error || 'Erro ao exportar dados',
         response.status
