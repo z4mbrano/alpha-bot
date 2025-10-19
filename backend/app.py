@@ -32,6 +32,15 @@ CORS(app)  # Permitir requisições do frontend
 RESPONSE_CACHE: Dict[str, Dict[str, Any]] = {}
 CACHE_TTL_SECONDS = 1800  # 30 minutos
 
+# 🚀 SPRINT 2 - Feature 5: Estatísticas de Cache
+CACHE_STATS = {
+    'hits': 0,
+    'misses': 0,
+    'sets': 0,
+    'clears': 0,
+    'expired': 0
+}
+
 def generate_cache_key(session_id: str, question: str) -> str:
     """Gera chave única para cache baseada em session_id + question"""
     combined = f"{session_id}:{question.lower().strip()}"
@@ -45,13 +54,16 @@ def get_cached_response(session_id: str, question: str) -> Optional[Dict[str, An
         cached = RESPONSE_CACHE[cache_key]
         # Verificar se cache ainda é válido (TTL)
         if datetime.now() < cached['expires_at']:
+            CACHE_STATS['hits'] += 1  # 🚀 SPRINT 2: Rastrear hit
             print(f"[CACHE HIT] ✅ Resposta encontrada no cache para: {question[:50]}...")
             return cached['response']
         else:
             # Cache expirado, remover
+            CACHE_STATS['expired'] += 1  # 🚀 SPRINT 2: Rastrear expiração
             print(f"[CACHE EXPIRED] ⏰ Cache expirado para: {question[:50]}...")
             del RESPONSE_CACHE[cache_key]
     
+    CACHE_STATS['misses'] += 1  # 🚀 SPRINT 2: Rastrear miss
     print(f"[CACHE MISS] ❌ Resposta não encontrada no cache para: {question[:50]}...")
     return None
 
@@ -66,6 +78,7 @@ def set_cached_response(session_id: str, question: str, response: Dict[str, Any]
         'created_at': datetime.now()
     }
     
+    CACHE_STATS['sets'] += 1  # 🚀 SPRINT 2: Rastrear set
     print(f"[CACHE SET] 💾 Resposta armazenada no cache (expira em {CACHE_TTL_SECONDS}s)")
     
     # Limpeza automática: remover caches expirados (máximo 1000 entradas)
@@ -74,6 +87,7 @@ def set_cached_response(session_id: str, question: str, response: Dict[str, Any]
         expired_keys = [k for k, v in RESPONSE_CACHE.items() if now >= v['expires_at']]
         for key in expired_keys:
             del RESPONSE_CACHE[key]
+        CACHE_STATS['expired'] += len(expired_keys)  # 🚀 SPRINT 2: Rastrear expirados
         print(f"[CACHE CLEANUP] 🧹 Removidas {len(expired_keys)} entradas expiradas")
 
 # ============================================
@@ -4086,6 +4100,61 @@ def chat():
         
     except Exception as e:
         return jsonify({"error": f"Erro interno: {str(e)}"}), 500
+
+# ============================================
+# 🚀 SPRINT 2 - FEATURE 5: CACHE MANAGEMENT
+# ============================================
+
+@app.route('/api/cache/stats', methods=['GET'])
+def cache_stats():
+    """Retorna estatísticas do cache"""
+    try:
+        total_requests = CACHE_STATS['hits'] + CACHE_STATS['misses']
+        hit_rate = (CACHE_STATS['hits'] / total_requests * 100) if total_requests > 0 else 0
+        
+        # Calcular tamanho do cache em memória (aproximado)
+        cache_size_bytes = 0
+        for key, value in RESPONSE_CACHE.items():
+            # Estimar tamanho de cada entrada
+            cache_size_bytes += len(str(value))
+        
+        cache_size_mb = cache_size_bytes / (1024 * 1024)
+        
+        stats = {
+            'total_entries': len(RESPONSE_CACHE),
+            'total_requests': total_requests,
+            'hits': CACHE_STATS['hits'],
+            'misses': CACHE_STATS['misses'],
+            'hit_rate': round(hit_rate, 2),
+            'sets': CACHE_STATS['sets'],
+            'expired': CACHE_STATS['expired'],
+            'clears': CACHE_STATS['clears'],
+            'cache_size_mb': round(cache_size_mb, 2),
+            'ttl_seconds': CACHE_TTL_SECONDS,
+            'max_entries': 1000
+        }
+        
+        return jsonify(stats), 200
+    except Exception as e:
+        return jsonify({"error": f"Erro ao obter estatísticas: {str(e)}"}), 500
+
+@app.route('/api/cache/clear', methods=['POST'])
+def cache_clear():
+    """Limpa todo o cache"""
+    try:
+        global RESPONSE_CACHE
+        entries_cleared = len(RESPONSE_CACHE)
+        RESPONSE_CACHE = {}
+        CACHE_STATS['clears'] += 1
+        
+        print(f"[CACHE CLEAR] 🧹 Cache limpo: {entries_cleared} entradas removidas")
+        
+        return jsonify({
+            "message": "Cache limpo com sucesso",
+            "entries_cleared": entries_cleared
+        }), 200
+    except Exception as e:
+        return jsonify({"error": f"Erro ao limpar cache: {str(e)}"}), 500
 
 @app.route('/api/health', methods=['GET'])
 def health():

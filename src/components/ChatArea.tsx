@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useBot } from '../contexts/BotContext'
 import MessageBubble from './MessageBubble'
-import { Paperclip, Send, X, Menu, BarChart2, Gem, Loader2, Trash2 } from 'lucide-react'
+import CacheSettingsModal from './CacheSettingsModal'
+import { Paperclip, Send, X, Menu, BarChart2, Gem, Loader2, Trash2, Settings } from 'lucide-react'
 
 // Mapa de mensagens de erro amigáveis para upload
 const UPLOAD_ERROR_MESSAGES: Record<string, string> = {
@@ -35,6 +36,7 @@ export default function ChatArea() {
   const [text, setText] = useState('')
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [isUploading, setIsUploading] = useState(false)
+  const [showCacheModal, setShowCacheModal] = useState(false)
   const feedRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -225,18 +227,30 @@ ${periodSection}
               </div>
             </div>
             
-            {/* Botão Limpar Conversa */}
-            <button
-              onClick={() => {
-                if (confirm('Deseja limpar toda a conversa? Esta ação não pode ser desfeita.')) {
-                  clearConversation()
-                }
-              }}
-              className="p-2 rounded hover:bg-red-500/10 text-red-400 transition-fast focus:outline-none focus:ring-2 focus:ring-red-500/50"
-              title="Limpar conversa"
-            >
-              <Trash2 size={16} />
-            </button>
+            {/* Botões de ação */}
+            <div className="flex items-center gap-2">
+              {/* Botão Configurações de Cache */}
+              <button
+                onClick={() => setShowCacheModal(true)}
+                className="p-2 rounded hover:bg-[var(--accent)]/10 text-[var(--accent)] transition-fast focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                title="Configurações de Cache"
+              >
+                <Settings size={16} />
+              </button>
+              
+              {/* Botão Limpar Conversa */}
+              <button
+                onClick={() => {
+                  if (confirm('Deseja limpar toda a conversa? Esta ação não pode ser desfeita.')) {
+                    clearConversation()
+                  }
+                }}
+                className="p-2 rounded hover:bg-red-500/10 text-red-400 transition-fast focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                title="Limpar conversa"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
           </div>
         </header>
       )}
@@ -402,6 +416,12 @@ ${periodSection}
           </button>
         </div>
       </footer>
+
+      {/* Modal de configurações de cache */}
+      <CacheSettingsModal 
+        isOpen={showCacheModal} 
+        onClose={() => setShowCacheModal(false)} 
+      />
     </main>
   )
 }

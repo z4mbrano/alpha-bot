@@ -376,6 +376,45 @@ export async function deleteDrivebotConversation(
 }
 
 // ============================================================================
+// 🚀 SPRINT 2 - FEATURE 5: CACHE MANAGEMENT
+// ============================================================================
+
+export interface CacheStats {
+  total_entries: number
+  total_requests: number
+  hits: number
+  misses: number
+  hit_rate: number
+  sets: number
+  expired: number
+  clears: number
+  cache_size_mb: number
+  ttl_seconds: number
+  max_entries: number
+}
+
+/**
+ * Obtém estatísticas do cache
+ */
+export async function getCacheStats(): Promise<CacheStats> {
+  return fetchWithErrorHandling<CacheStats>(`${API_BASE_URL}/api/cache/stats`, {
+    method: 'GET',
+  })
+}
+
+/**
+ * Limpa todo o cache
+ */
+export async function clearCache(): Promise<{ message: string; entries_cleared: number }> {
+  return fetchWithErrorHandling<{ message: string; entries_cleared: number }>(
+    `${API_BASE_URL}/api/cache/clear`,
+    {
+      method: 'POST',
+    }
+  )
+}
+
+// ============================================================================
 // HEALTH CHECK
 // ============================================================================
 
