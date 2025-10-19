@@ -3345,6 +3345,5 @@ def health():
     return jsonify({"status": "ok", "service": "Alpha Insights Chat Backend"})
 
 if __name__ == '__main__':
-    # host='0.0.0.0' permite conexões de outros dispositivos na rede local
-    # Para usar apenas na sua máquina, mude para host='localhost'
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Apenas para desenvolvimento local
+    app.run(debug=True, host='localhost', port=5000)
