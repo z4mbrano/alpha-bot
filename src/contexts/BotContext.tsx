@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
+import type { ChartData } from '../types'
 
 // Mapa de mensagens de erro amigáveis
 const ERROR_MESSAGES: Record<string, string> = {
@@ -63,7 +64,9 @@ export type Message = {
   time: number
   isTyping?: boolean
   suggestions?: string[]  // 🚀 SPRINT 2: Sugestões de perguntas
-  sessionId?: string  // 🚀 SPRINT 2: ID da sessão (para exportar dados)
+  sessionId?: string  // 🚀 SPRINT 2: ID da sessão do AlphaBot (para exportar dados)
+  conversationId?: string  // 🚀 SPRINT 2: ID da conversa do DriveBot (para exportar dados)
+  chart?: ChartData  // 🚀 SPRINT 2: Dados para gráfico automático
 }
 
 const initialMessages: Record<BotId, Message[]> = {
@@ -224,7 +227,8 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
           text: data.answer,
           time: Date.now(),
           suggestions: data.suggestions || [],  // 🚀 Sugestões de perguntas
-          sessionId: data.session_id  // 🚀 SPRINT 2: ID da sessão para exportar
+          sessionId: data.session_id,  // 🚀 SPRINT 2: ID da sessão para exportar
+          chart: data.chart  // 🚀 SPRINT 2: Gráfico automático
         }
         setStore((s) => ({ ...s, [active]: [...s[active], botMsg] }))
         
@@ -262,7 +266,9 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
           botId: active,
           text: data.response,
           time: Date.now(),
-          suggestions: data.suggestions || []  // 🚀 Sugestões para DriveBot
+          suggestions: data.suggestions || [],  // 🚀 Sugestões para DriveBot
+          conversationId: data.conversation_id,  // 🚀 SPRINT 2: ID da conversa para export
+          chart: data.chart  // 🚀 SPRINT 2: Gráfico automático para DriveBot
         }
         setStore((s) => ({ ...s, [active]: [...s[active], botMsg] }))
       }

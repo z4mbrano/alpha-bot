@@ -249,6 +249,62 @@ export async function exportAlphabotToExcel(sessionId: string): Promise<void> {
   }
 }
 
+/**
+ * 🚀 SPRINT 2: Exporta dados do DriveBot como arquivo Excel
+ * @param conversationId - ID da conversação
+ * @returns Promise que resolve quando o download inicia
+ */
+export async function exportDrivebotToExcel(conversationId: string): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/drivebot/export`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ conversation_id: conversationId }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new ApiError(
+        errorData.error || 'Erro ao exportar dados',
+        response.status
+      )
+    }
+
+    // Obter blob do arquivo
+    const blob = await response.blob()
+    
+    // Extrair nome do arquivo do header (se disponível)
+    const contentDisposition = response.headers.get('content-disposition')
+    let filename = 'drivebot_export.xlsx'
+    
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i)
+      if (filenameMatch) {
+        filename = filenameMatch[1]
+      }
+    }
+
+    // Criar URL temporária e forçar download
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    
+    // Limpeza
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error
+    }
+    throw new ApiError('Erro ao fazer download do arquivo', 0)
+  }
+}
+
 // ============================================================================
 // DRIVEBOT API
 // ============================================================================

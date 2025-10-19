@@ -3113,10 +3113,36 @@ def get_bot_response(bot_id: str, message: str, conversation_id: str | None = No
                     print(f"[DRIVEBOT SUGESTÕES] Erro ao gerar: {sugg_error}")
                     suggestions = []
         
+        # ============================================
+        # 🚀 SPRINT 2 - FEATURE 3: GRÁFICOS PARA DRIVEBOT
+        # ============================================
+        chart_data = None
+        if bot_id == 'drivebot':
+            drive_state = conversation.get("drive", {})
+            tables = drive_state.get("tables", [])
+            
+            # Se temos dados do Drive, tentar gerar gráfico
+            if tables:
+                for table in tables:
+                    df = table.get("df")
+                    if df is not None and not df.empty:
+                        # Criar metadata para detecção de gráfico
+                        metadata_for_chart = {
+                            'date_columns': [col for col in df.columns 
+                                           if any(word in col.lower() for word in ['data', 'date', 'mes', 'ano', 'month'])]
+                        }
+                        
+                        if should_include_chart(message, df, metadata_for_chart):
+                            chart_data = generate_chart_data(df, message, metadata_for_chart)
+                            if chart_data:
+                                print(f"[DRIVEBOT GRÁFICO] Incluindo gráfico do tipo '{chart_data['type']}' com {len(chart_data['data'])} pontos")
+                                break
+        
         return {
             "response": response_text, 
             "conversation_id": conversation_id,
-            "suggestions": suggestions
+            "suggestions": suggestions,
+            "chart": chart_data  # 🚀 Incluir gráfico se gerado
         }
 
     except Exception as error:
@@ -3514,6 +3540,190 @@ def generate_fallback_suggestions(metadata: Dict[str, Any]) -> List[str]:
     return suggestions[:3]
 
 # ============================================
+# 🚀 SPRINT 2 - FEATURE 3: GRÁFICOS AUTOMÁTICOS
+# ============================================
+
+def should_include_chart(question: str, df: pd.DataFrame, metadata: Dict[str, Any]) -> bool:
+    """
+    Detecta se a pergunta é apropriada para incluir um gráfico.
+    
+    Critérios:
+    1. Palavras-chave relacionadas a visualização
+    2. Dados numéricos disponíveis
+    3. Colunas temporais ou categóricas para agrupamento
+    """
+    # Palavras-chave que indicam visualização
+    chart_keywords = [
+        'evolução', 'evolucao', 'tendência', 'tendencia', 'ao longo',
+        'comparar', 'compare', 'distribuição', 'distribuicao',
+        'gráfico', 'grafico', 'visualize', 'mostre', 'plot',
+        'crescimento', 'queda', 'variação', 'variacao',
+        'temporal', 'mensal', 'anual', 'diário', 'diario'
+    ]
+    
+    question_lower = question.lower()
+    has_keywords = any(keyword in question_lower for keyword in chart_keywords)
+    
+    # Verificar se há colunas numéricas
+    numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+    has_numeric = len(numeric_cols) > 0
+    
+    # Verificar se há colunas temporais ou categóricas
+    has_date = len(metadata.get('date_columns', [])) > 0
+    
+    # Colunas categóricas (texto com poucos valores únicos)
+    categorical_cols = [
+        col for col in df.select_dtypes(include=['object']).columns
+        if df[col].nunique() <= 20  # Máximo 20 categorias
+    ]
+    has_categorical = len(categorical_cols) > 0
+    
+    # Incluir gráfico se: tem keywords E tem dados numéricos E (tem temporal OU categórico)
+    return has_keywords and has_numeric and (has_date or has_categorical)
+
+def generate_chart_data(df: pd.DataFrame, question: str, metadata: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Gera dados para gráfico baseado na pergunta e nos dados disponíveis.
+    
+    Retorna:
+    {
+        "type": "line" | "bar" | "pie",
+        "data": [{"label": "Jan", "value": 100}, ...],
+        "x_axis": "Mês",
+        "y_axis": "Vendas",
+        "title": "Evolução de Vendas"
+    }
+    """
+    try:
+        question_lower = question.lower()
+        
+        # Detectar tipo de análise baseado na pergunta
+        is_temporal = any(word in question_lower for word in ['evolução', 'evolucao', 'tendência', 'tendencia', 'ao longo', 'temporal', 'mensal', 'anual', 'diário', 'diario'])
+        is_distribution = any(word in question_lower for word in ['distribuição', 'distribuicao', 'divisão', 'divisao', 'proporção', 'proporcao', 'percentual'])
+        is_ranking = any(word in question_lower for word in ['ranking', 'top', 'maiores', 'menores', 'melhores', 'piores'])
+        is_comparison = any(word in question_lower for word in ['comparar', 'compare', 'comparação', 'comparacao', 'versus', 'vs', 'entre'])
+        
+        # Colunas numéricas disponíveis
+        numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+        if not numeric_cols:
+            return None
+        
+        # Escolher coluna numérica mais relevante
+        # Priorizar colunas com "valor", "total", "vendas", "quantidade"
+        value_col = numeric_cols[0]
+        for col in numeric_cols:
+            col_lower = col.lower()
+            if any(keyword in col_lower for keyword in ['valor', 'total', 'vendas', 'venda', 'quantidade', 'qtd', 'receita']):
+                value_col = col
+                break
+        
+        # GRÁFICO TEMPORAL (LineChart) - Evolução ao longo do tempo
+        if is_temporal and metadata.get('date_columns'):
+            date_col = metadata['date_columns'][0]
+            
+            # Agrupar por data e somar valores
+            grouped = df.groupby(date_col)[value_col].sum().reset_index()
+            grouped = grouped.sort_values(date_col).head(20)  # Máximo 20 pontos
+            
+            chart_data = []
+            for _, row in grouped.iterrows():
+                chart_data.append({
+                    str(date_col): str(row[date_col]),
+                    str(value_col): float(row[value_col])
+                })
+            
+            return {
+                "type": "line",
+                "data": chart_data,
+                "x_axis": str(date_col),
+                "y_axis": str(value_col),
+                "title": f"Evolução de {value_col}"
+            }
+        
+        # GRÁFICO DE DISTRIBUIÇÃO (BarChart horizontal) - Mostra como dados estão divididos
+        elif is_distribution:
+            # Encontrar melhor coluna categórica
+            categorical_cols = [
+                col for col in df.select_dtypes(include=['object']).columns
+                if df[col].nunique() <= 20 and df[col].nunique() >= 2
+            ]
+            
+            if not categorical_cols:
+                return None
+            
+            # Priorizar colunas com "categoria", "tipo", "região", "status"
+            category_col = categorical_cols[0]
+            for col in categorical_cols:
+                col_lower = col.lower()
+                if any(keyword in col_lower for keyword in ['categoria', 'tipo', 'região', 'regiao', 'status', 'grupo', 'classe']):
+                    category_col = col
+                    break
+            
+            # Contar ocorrências para distribuição (não somar valores)
+            distribution = df[category_col].value_counts().reset_index()
+            distribution.columns = [category_col, 'Quantidade']
+            distribution = distribution.head(10)
+            
+            chart_data = []
+            for _, row in distribution.iterrows():
+                chart_data.append({
+                    str(category_col): str(row[category_col]),
+                    'Quantidade': int(row['Quantidade'])
+                })
+            
+            return {
+                "type": "bar",
+                "data": chart_data,
+                "x_axis": str(category_col),
+                "y_axis": "Quantidade",
+                "title": f"Distribuição por {category_col}"
+            }
+        
+        # GRÁFICO DE RANKING/COMPARAÇÃO (BarChart) - Top valores
+        elif is_ranking or is_comparison:
+            # Encontrar coluna categórica
+            categorical_cols = [
+                col for col in df.select_dtypes(include=['object']).columns
+                if df[col].nunique() <= 20 and df[col].nunique() >= 2
+            ]
+            
+            if not categorical_cols:
+                return None
+            
+            # Priorizar colunas relevantes
+            category_col = categorical_cols[0]
+            for col in categorical_cols:
+                col_lower = col.lower()
+                if any(keyword in col_lower for keyword in ['região', 'regiao', 'vendedor', 'produto', 'cliente', 'loja', 'filial']):
+                    category_col = col
+                    break
+            
+            # Agrupar por categoria e somar valores
+            grouped = df.groupby(category_col)[value_col].sum().reset_index()
+            grouped = grouped.sort_values(value_col, ascending=False).head(10)  # Top 10
+            
+            chart_data = []
+            for _, row in grouped.iterrows():
+                chart_data.append({
+                    str(category_col): str(row[category_col]),
+                    str(value_col): float(row[value_col])
+                })
+            
+            return {
+                "type": "bar",
+                "data": chart_data,
+                "x_axis": str(category_col),
+                "y_axis": str(value_col),
+                "title": f"Ranking de {value_col} por {category_col}"
+            }
+        
+        return None
+        
+    except Exception as e:
+        print(f"[GRÁFICO] Erro ao gerar dados: {str(e)}")
+        return None
+
+# ============================================
 
 @app.route('/api/alphabot/chat', methods=['POST'])
 def alphabot_chat():
@@ -3619,6 +3829,13 @@ Apresente APENAS a resposta final do Júri ao usuário.
         # 🚀 SPRINT 2: Gerar sugestões de perguntas (follow-up)
         suggestions = generate_follow_up_questions(message, answer, metadata)
         
+        # 🚀 SPRINT 2 - FEATURE 3: Gerar gráfico automático se apropriado
+        chart_data = None
+        if should_include_chart(message, df, metadata):
+            chart_data = generate_chart_data(df, message, metadata)
+            if chart_data:
+                print(f"[GRÁFICO] Incluindo gráfico do tipo '{chart_data['type']}' com {len(chart_data['data'])} pontos")
+        
         # Preparar resposta
         response_data = {
             "answer": answer,
@@ -3629,6 +3846,10 @@ Apresente APENAS a resposta final do Júri ao usuário.
                 "columns_available": len(df.columns)
             }
         }
+        
+        # Adicionar gráfico se gerado
+        if chart_data:
+            response_data["chart"] = chart_data
         
         # 🚀 ARMAZENAR NO CACHE (SPRINT 1)
         set_cached_response(session_id, message, response_data)
@@ -3732,6 +3953,96 @@ def alphabot_export():
         
     except Exception as e:
         print(f"[EXPORT] Erro: {str(e)}")
+        return jsonify({"error": f"Erro ao exportar dados: {str(e)}"}), 500
+
+@app.route('/api/drivebot/export', methods=['POST'])
+def drivebot_export():
+    """
+    Endpoint para exportar dados do DriveBot como arquivo Excel (.xlsx).
+    
+    Recebe: { "conversation_id": "abc123" }
+    Retorna: Arquivo Excel binário para download
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({"error": "JSON inválido"}), 400
+        
+        conversation_id = data.get('conversation_id')
+        
+        if not conversation_id:
+            return jsonify({"error": "conversation_id é obrigatório"}), 400
+        
+        # Verificar se a conversa existe
+        if conversation_id not in CONVERSATION_STORE:
+            return jsonify({"error": "Conversa não encontrada"}), 404
+        
+        conversation = CONVERSATION_STORE[conversation_id]
+        drive_state = conversation.get("drive", {})
+        tables = drive_state.get("tables", [])
+        
+        if not tables:
+            return jsonify({"error": "Nenhum dado disponível para exportar"}), 404
+        
+        # Consolidar todos os DataFrames em um único arquivo Excel
+        # Cada tabela será uma sheet separada
+        output = io.BytesIO()
+        
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            for idx, table in enumerate(tables):
+                df = table.get("df")
+                sheet_name = table.get("name", f"Sheet{idx+1}")[:31]  # Excel limit: 31 chars
+                
+                if df is not None and not df.empty:
+                    df.to_excel(writer, index=False, sheet_name=sheet_name)
+                    
+                    # Obter worksheet para aplicar formatação
+                    worksheet = writer.sheets[sheet_name]
+                    
+                    # Aplicar formatação ao cabeçalho
+                    from openpyxl.styles import Font, PatternFill, Alignment
+                    
+                    header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+                    header_font = Font(color='FFFFFF', bold=True)
+                    
+                    for cell in worksheet[1]:  # Primeira linha (cabeçalho)
+                        cell.fill = header_fill
+                        cell.font = header_font
+                        cell.alignment = Alignment(horizontal='center', vertical='center')
+                    
+                    # Ajustar largura das colunas
+                    for column in worksheet.columns:
+                        max_length = 0
+                        column_letter = column[0].column_letter
+                        
+                        for cell in column:
+                            try:
+                                if len(str(cell.value)) > max_length:
+                                    max_length = len(str(cell.value))
+                            except:
+                                pass
+                        
+                        adjusted_width = min(max_length + 2, 50)  # Máximo 50
+                        worksheet.column_dimensions[column_letter].width = adjusted_width
+        
+        # Preparar para download
+        output.seek(0)
+        
+        # Nome do arquivo com timestamp
+        from datetime import datetime
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'drivebot_export_{timestamp}.xlsx'
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+        
+    except Exception as e:
+        print(f"[DRIVEBOT EXPORT] Erro: {str(e)}")
         return jsonify({"error": f"Erro ao exportar dados: {str(e)}"}), 500
 
 @app.route('/api/chat', methods=['POST'])

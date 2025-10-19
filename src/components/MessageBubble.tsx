@@ -4,7 +4,8 @@ import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
 import { Copy, Check, Sparkles, Download } from 'lucide-react'
 import { Message } from '../contexts/BotContext'
-import { exportAlphabotToExcel } from '../services/api'
+import { exportAlphabotToExcel, exportDrivebotToExcel } from '../services/api'
+import ChartRenderer from './ChartRenderer'
 
 export default function MessageBubble({ m, onSendMessage }: { m: Message; onSendMessage?: (text: string) => void }) {
   const isUser = m.author === 'user'
@@ -22,11 +23,14 @@ export default function MessageBubble({ m, onSendMessage }: { m: Message; onSend
   }
 
   const handleDownload = async () => {
-    if (!m.sessionId) return
-    
     try {
       setDownloading(true)
-      await exportAlphabotToExcel(m.sessionId)
+      
+      if (m.botId === 'alphabot' && m.sessionId) {
+        await exportAlphabotToExcel(m.sessionId)
+      } else if (m.botId === 'drivebot' && m.conversationId) {
+        await exportDrivebotToExcel(m.conversationId)
+      }
     } catch (err) {
       console.error('Erro ao fazer download:', err)
       alert('Erro ao exportar dados. Tente novamente.')
@@ -120,6 +124,13 @@ export default function MessageBubble({ m, onSendMessage }: { m: Message; onSend
             </ReactMarkdown>
           </div>
         )}
+        
+        {/* Gráfico automático - SPRINT 2 */}
+        {!isUser && m.chart && (
+          <div className="mt-4">
+            <ChartRenderer chart={m.chart} />
+          </div>
+        )}
         </div>
         
         {/* Botões de ação - apenas para mensagens do bot */}
@@ -138,8 +149,8 @@ export default function MessageBubble({ m, onSendMessage }: { m: Message; onSend
               )}
             </button>
             
-            {/* 🚀 SPRINT 2: Botão de download Excel (apenas AlphaBot com sessionId) */}
-            {m.botId === 'alphabot' && m.sessionId && (
+            {/* 🚀 SPRINT 2: Botão de download Excel (AlphaBot + DriveBot) */}
+            {((m.botId === 'alphabot' && m.sessionId) || (m.botId === 'drivebot' && m.conversationId)) && (
               <button
                 onClick={handleDownload}
                 disabled={downloading}

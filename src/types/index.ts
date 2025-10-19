@@ -29,10 +29,20 @@ export interface AlphabotUploadResponse {
   message: string
 }
 
+// 🚀 SPRINT 2 Feature 3: Chart Data
+export interface ChartData {
+  type: 'line' | 'bar' | 'pie'
+  data: Record<string, any>[]
+  x_axis: string
+  y_axis: string
+  title?: string
+}
+
 export interface AlphabotChatResponse {
   answer: string
   session_id: string
   suggestions?: string[]  // 🚀 SPRINT 2: Sugestões de perguntas follow-up
+  chart?: ChartData  // 🚀 SPRINT 2 Feature 3: Dados do gráfico
 }
 
 export interface AlphabotSessionInfo {
