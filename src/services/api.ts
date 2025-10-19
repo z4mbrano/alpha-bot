@@ -415,6 +415,128 @@ export async function clearCache(): Promise<{ message: string; entries_cleared: 
 }
 
 // ============================================================================
+// CONVERSAS (Multi-usuário)
+// ============================================================================
+
+export interface Conversation {
+  id: string
+  user_id: number
+  bot_type: string
+  title: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ConversationMessage {
+  id: string
+  author: string
+  text: string
+  time: number
+  chart?: any
+  suggestions?: string[]
+}
+
+/**
+ * Lista todas as conversas do usuário
+ */
+export async function getConversations(userId: number, botType?: string): Promise<Conversation[]> {
+  const url = botType 
+    ? `${API_BASE_URL}/api/conversations?user_id=${userId}&bot_type=${botType}`
+    : `${API_BASE_URL}/api/conversations?user_id=${userId}`
+  
+  const response = await fetchWithErrorHandling<{ conversations: Conversation[] }>(url, {
+    method: 'GET',
+  })
+  return response.conversations
+}
+
+/**
+ * Cria nova conversa
+ */
+export async function createConversation(
+  userId: number, 
+  botType: string, 
+  title: string = 'Nova Conversa'
+): Promise<{ conversation_id: string }> {
+  return fetchWithErrorHandling<{ conversation_id: string }>(
+    `${API_BASE_URL}/api/conversations`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, bot_type: botType, title })
+    }
+  )
+}
+
+/**
+ * Obtém detalhes de uma conversa
+ */
+export async function getConversation(conversationId: string, userId: number): Promise<Conversation> {
+  const response = await fetchWithErrorHandling<{ conversation: Conversation }>(
+    `${API_BASE_URL}/api/conversations/${conversationId}?user_id=${userId}`,
+    { method: 'GET' }
+  )
+  return response.conversation
+}
+
+/**
+ * Atualiza título da conversa
+ */
+export async function updateConversationTitle(
+  conversationId: string, 
+  userId: number, 
+  title: string
+): Promise<void> {
+  await fetchWithErrorHandling(
+    `${API_BASE_URL}/api/conversations/${conversationId}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, title })
+    }
+  )
+}
+
+/**
+ * Deleta uma conversa
+ */
+export async function deleteConversation(conversationId: string, userId: number): Promise<void> {
+  await fetchWithErrorHandling(
+    `${API_BASE_URL}/api/conversations/${conversationId}`,
+    {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId })
+    }
+  )
+}
+
+/**
+ * Carrega mensagens de uma conversa
+ */
+export async function getConversationMessages(
+  conversationId: string, 
+  userId: number
+): Promise<ConversationMessage[]> {
+  const response = await fetchWithErrorHandling<{ messages: ConversationMessage[] }>(
+    `${API_BASE_URL}/api/conversations/${conversationId}/messages?user_id=${userId}`,
+    { method: 'GET' }
+  )
+  return response.messages
+}
+
+/**
+ * Busca conversas por texto
+ */
+export async function searchConversations(userId: number, query: string): Promise<Conversation[]> {
+  const response = await fetchWithErrorHandling<{ results: Conversation[] }>(
+    `${API_BASE_URL}/api/conversations/search?user_id=${userId}&q=${encodeURIComponent(query)}`,
+    { method: 'GET' }
+  )
+  return response.results
+}
+
+// ============================================================================
 // HEALTH CHECK
 // ============================================================================
 

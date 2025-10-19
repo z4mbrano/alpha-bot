@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react'
-import { Sun, Moon, Menu, BarChart2, Gem } from 'lucide-react'
+import { Sun, Moon, Menu, BarChart2, Gem, LogOut, User, Plus, Trash2, MessageSquare } from 'lucide-react'
 import { useTheme } from '../contexts/ThemeContext'
 import { useBot, BotId } from '../contexts/BotContext'
+import { useAuth } from '../contexts/AuthContext'
+import { useConversation } from '../contexts/ConversationContext'
 
 const bots: { id: BotId; name: string; icon: React.ReactNode }[] = [
   { id: 'alphabot', name: 'ALPHABOT', icon: <BarChart2 size={18} /> },
@@ -11,6 +13,8 @@ const bots: { id: BotId; name: string; icon: React.ReactNode }[] = [
 export default function Sidebar() {
   const { theme, toggle } = useTheme()
   const { active, setActive } = useBot()
+  const { user, logout } = useAuth()
+  const { conversations, activeConversationId, loading, createNewConversation, switchConversation, deleteConversation } = useConversation()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -108,16 +112,129 @@ export default function Sidebar() {
         <div className="mt-auto pt-4">
           {!collapsed && (
             <>
-              <h4 className="text-[10px] font-semibold text-[var(--muted)] tracking-[0.16em]">HISTÓRICO</h4>
-              <div className="mt-2 text-xs text-[var(--muted)]">EM MANUTENÇÃO</div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-[10px] font-semibold text-[var(--muted)] tracking-[0.16em]">HISTÓRICO</h4>
+                <button
+                  onClick={async () => {
+                    try {
+                      await createNewConversation(active, 'Nova Conversa')
+                    } catch (error) {
+                      // Erro já tratado no contexto
+                    }
+                  }}
+                  className="p-1.5 rounded-md bg-[var(--accent)]/10 hover:bg-[var(--accent)]/20 text-[var(--accent)] transition-fast"
+                  title="Nova conversa"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+              
+              {/* Lista de conversas */}
+              <div className="space-y-1 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                {loading ? (
+                  <div className="text-xs text-[var(--muted)] text-center py-4">Carregando...</div>
+                ) : conversations.length === 0 ? (
+                  <div className="text-xs text-[var(--muted)] text-center py-4">Nenhuma conversa ainda</div>
+                ) : (
+                  conversations
+                    .filter(c => c.bot_type === active)
+                    .slice(0, 10)
+                    .map(conv => (
+                      <div
+                        key={conv.id}
+                        className={`group flex items-center gap-2 p-2 rounded-md transition-fast cursor-pointer ${
+                          activeConversationId === conv.id
+                            ? 'bg-[var(--accent)]/20 border border-[var(--accent)]/30'
+                            : 'hover:bg-white/5 border border-transparent'
+                        }`}
+                        onClick={() => switchConversation(conv.id)}
+                      >
+                        <MessageSquare size={14} className="text-[var(--muted)] shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium text-[var(--text)] truncate">
+                            {conv.title}
+                          </div>
+                          <div className="text-[10px] text-[var(--muted)]">
+                            {new Date(conv.updated_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (confirm('Deletar esta conversa?')) {
+                              deleteConversation(conv.id)
+                            }
+                          }}
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/20 text-red-400 transition-fast"
+                          title="Deletar"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    ))
+                )}
+              </div>
             </>
           )}
 
-          <div className={`mt-6 flex items-center gap-3 border-t border-[var(--border)] pt-4 ${collapsed ? 'justify-center' : ''}`}>
-            {!collapsed && <div className="flex-1 text-sm text-[var(--muted)]">Tema</div>}
-            <button onClick={toggle} className="p-2 rounded-md bg-white/5 hover:bg-white/10 transition-fast focus:outline-none focus:ring-2 focus:ring-[var(--ring)]" aria-label="Alternar tema">
-              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-            </button>
+          {/* Informações do usuário */}
+          <div className={`mt-6 border-t border-[var(--border)] pt-4 ${collapsed ? '' : 'space-y-3'}`}>
+            {/* Usuário */}
+            {!collapsed && user && (
+              <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-[var(--accent)]/10">
+                <div className="w-8 h-8 rounded-full bg-[var(--accent)] text-white grid place-items-center font-bold text-sm">
+                  {user.username[0].toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-[var(--text)] truncate">{user.username}</div>
+                  <div className="text-xs text-[var(--muted)]">Conta Ativa</div>
+                </div>
+              </div>
+            )}
+
+            {/* Controles */}
+            <div className={`flex items-center gap-2 ${collapsed ? 'flex-col' : ''}`}>
+              {/* Tema */}
+              <button 
+                onClick={toggle} 
+                className="p-2 rounded-md bg-white/5 hover:bg-white/10 transition-fast focus:outline-none focus:ring-2 focus:ring-[var(--ring)]" 
+                aria-label="Alternar tema"
+                title="Alternar tema"
+              >
+                {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
+
+              {/* Logout */}
+              {!collapsed && (
+                <button
+                  onClick={() => {
+                    if (confirm('Deseja fazer logout?')) {
+                      logout()
+                    }
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-fast focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                  title="Sair"
+                >
+                  <LogOut size={16} />
+                  <span className="text-sm font-medium">Sair</span>
+                </button>
+              )}
+
+              {collapsed && (
+                <button
+                  onClick={() => {
+                    if (confirm('Deseja fazer logout?')) {
+                      logout()
+                    }
+                  }}
+                  className="p-2 rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-fast focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                  aria-label="Sair"
+                  title="Sair"
+                >
+                  <LogOut size={16} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </aside>

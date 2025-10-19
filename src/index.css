@@ -177,3 +177,21 @@ body::after {
   background: var(--surface) !important;
   border-color: var(--accent) !important;
 }
+
+/* =============== CUSTOM SCROLLBAR =============== */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}

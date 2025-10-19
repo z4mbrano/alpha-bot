@@ -18,9 +18,13 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
 from dotenv import load_dotenv
+import database  # Sistema de banco de dados multi-usuário
 
 # Carregar variáveis de ambiente
 load_dotenv()
+
+# Inicializar banco de dados
+database.init_database()
 
 app = Flask(__name__)
 CORS(app)  # Permitir requisições do frontend
@@ -4155,6 +4159,264 @@ def cache_clear():
         }), 200
     except Exception as e:
         return jsonify({"error": f"Erro ao limpar cache: {str(e)}"}), 500
+
+# ============================================
+# 🔐 AUTENTICAÇÃO E GESTÃO DE USUÁRIOS
+# ============================================
+
+@app.route('/api/auth/register', methods=['POST', 'OPTIONS'])
+def register():
+    """Registrar novo usuário"""
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    try:
+        data = request.json
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+        
+        # Validações
+        if not username or len(username) < 3:
+            return jsonify({"error": "Username deve ter pelo menos 3 caracteres"}), 400
+        
+        if not password or len(password) < 6:
+            return jsonify({"error": "Senha deve ter pelo menos 6 caracteres"}), 400
+        
+        # Criar usuário
+        user = database.create_user(username, password)
+        
+        if user:
+            return jsonify({
+                "success": True,
+                "user": {
+                    "id": user['id'],
+                    "username": user['username']
+                },
+                "message": "Usuário criado com sucesso!"
+            }), 201
+        else:
+            return jsonify({"error": "Username já existe"}), 409
+    
+    except Exception as e:
+        print(f"❌ Erro no registro: {e}")
+        return jsonify({"error": "Erro ao registrar usuário"}), 500
+
+
+@app.route('/api/auth/login', methods=['POST', 'OPTIONS'])
+def login():
+    """Autenticar usuário"""
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    try:
+        data = request.json
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+        
+        if not username or not password:
+            return jsonify({"error": "Username e senha são obrigatórios"}), 400
+        
+        # Autenticar
+        user = database.authenticate_user(username, password)
+        
+        if user:
+            return jsonify({
+                "success": True,
+                "user": {
+                    "id": user['id'],
+                    "username": user['username']
+                },
+                "message": "Login realizado com sucesso!"
+            }), 200
+        else:
+            return jsonify({"error": "Credenciais inválidas"}), 401
+    
+    except Exception as e:
+        print(f"❌ Erro no login: {e}")
+        return jsonify({"error": "Erro ao fazer login"}), 500
+
+
+@app.route('/api/auth/me', methods=['GET'])
+def get_current_user():
+    """Retorna dados do usuário atual (baseado no user_id enviado)"""
+    try:
+        user_id = request.args.get('user_id', type=int)
+        
+        if not user_id:
+            return jsonify({"error": "user_id não fornecido"}), 400
+        
+        user = database.get_user_by_id(user_id)
+        
+        if user:
+            return jsonify({
+                "user": {
+                    "id": user['id'],
+                    "username": user['username']
+                }
+            }), 200
+        else:
+            return jsonify({"error": "Usuário não encontrado"}), 404
+    
+    except Exception as e:
+        print(f"❌ Erro ao buscar usuário: {e}")
+        return jsonify({"error": "Erro ao buscar usuário"}), 500
+
+
+# ============================================
+# 💬 GESTÃO DE CONVERSAS
+# ============================================
+
+@app.route('/api/conversations', methods=['GET', 'POST', 'OPTIONS'])
+def conversations():
+    """Listar ou criar conversas"""
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    try:
+        user_id = request.args.get('user_id', type=int) or request.json.get('user_id')
+        
+        if not user_id:
+            return jsonify({"error": "user_id não fornecido"}), 400
+        
+        if request.method == 'GET':
+            # Listar conversas do usuário
+            bot_type = request.args.get('bot_type')  # Filtro opcional
+            conversations_list = database.get_user_conversations(user_id, bot_type)
+            
+            return jsonify({
+                "conversations": conversations_list,
+                "count": len(conversations_list)
+            }), 200
+        
+        elif request.method == 'POST':
+            # Criar nova conversa
+            data = request.json
+            bot_type = data.get('bot_type', 'alphabot')
+            title = data.get('title', 'Nova Conversa')
+            
+            conversation_id = database.create_conversation(user_id, bot_type, title)
+            
+            return jsonify({
+                "success": True,
+                "conversation_id": conversation_id,
+                "bot_type": bot_type,
+                "title": title,
+                "message": "Conversa criada com sucesso!"
+            }), 201
+    
+    except Exception as e:
+        print(f"❌ Erro em conversas: {e}")
+        return jsonify({"error": f"Erro ao processar conversas: {str(e)}"}), 500
+
+
+@app.route('/api/conversations/<conversation_id>', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'])
+def conversation_detail(conversation_id):
+    """Obter, atualizar ou deletar uma conversa específica"""
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    try:
+        user_id = request.args.get('user_id', type=int) or (request.json or {}).get('user_id')
+        
+        if not user_id:
+            return jsonify({"error": "user_id não fornecido"}), 400
+        
+        if request.method == 'GET':
+            # Obter detalhes da conversa
+            conversation = database.get_conversation(conversation_id, user_id)
+            
+            if conversation:
+                return jsonify({"conversation": conversation}), 200
+            else:
+                return jsonify({"error": "Conversa não encontrada"}), 404
+        
+        elif request.method == 'PUT':
+            # Atualizar título da conversa
+            data = request.json
+            title = data.get('title')
+            
+            if not title:
+                return jsonify({"error": "Título não fornecido"}), 400
+            
+            success = database.update_conversation_title(conversation_id, user_id, title)
+            
+            if success:
+                return jsonify({
+                    "success": True,
+                    "message": "Conversa atualizada com sucesso!"
+                }), 200
+            else:
+                return jsonify({"error": "Conversa não encontrada"}), 404
+        
+        elif request.method == 'DELETE':
+            # Deletar conversa
+            success = database.delete_conversation(conversation_id, user_id)
+            
+            if success:
+                return jsonify({
+                    "success": True,
+                    "message": "Conversa deletada com sucesso!"
+                }), 200
+            else:
+                return jsonify({"error": "Conversa não encontrada"}), 404
+    
+    except Exception as e:
+        print(f"❌ Erro em conversa: {e}")
+        return jsonify({"error": f"Erro ao processar conversa: {str(e)}"}), 500
+
+
+@app.route('/api/conversations/<conversation_id>/messages', methods=['GET', 'OPTIONS'])
+def conversation_messages(conversation_id):
+    """Obter todas as mensagens de uma conversa"""
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    try:
+        user_id = request.args.get('user_id', type=int)
+        
+        if not user_id:
+            return jsonify({"error": "user_id não fornecido"}), 400
+        
+        messages = database.get_conversation_messages(conversation_id, user_id)
+        
+        return jsonify({
+            "messages": messages,
+            "count": len(messages)
+        }), 200
+    
+    except Exception as e:
+        print(f"❌ Erro ao buscar mensagens: {e}")
+        return jsonify({"error": f"Erro ao buscar mensagens: {str(e)}"}), 500
+
+
+@app.route('/api/conversations/search', methods=['GET', 'OPTIONS'])
+def search_conversations():
+    """Buscar conversas por título ou conteúdo"""
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    try:
+        user_id = request.args.get('user_id', type=int)
+        query = request.args.get('q', '').strip()
+        
+        if not user_id:
+            return jsonify({"error": "user_id não fornecido"}), 400
+        
+        if not query:
+            return jsonify({"error": "Query de busca não fornecida"}), 400
+        
+        results = database.search_conversations(user_id, query)
+        
+        return jsonify({
+            "results": results,
+            "count": len(results),
+            "query": query
+        }), 200
+    
+    except Exception as e:
+        print(f"❌ Erro na busca: {e}")
+        return jsonify({"error": f"Erro ao buscar: {str(e)}"}), 500
+
 
 @app.route('/api/health', methods=['GET'])
 def health():
