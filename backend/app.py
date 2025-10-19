@@ -4530,5 +4530,14 @@ def health():
     return jsonify({"status": "ok", "service": "Alpha Insights Chat Backend"})
 
 if __name__ == '__main__':
-    # Apenas para desenvolvimento local
-    app.run(debug=True, host='localhost', port=5000)
+    # Detectar ambiente e configurar porta/host apropriados
+    port = int(os.environ.get('PORT', 5000))
+    
+    # Railway, Render, Heroku usam PORT
+    if os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('RENDER') or os.environ.get('PORT'):
+        print(f"🚂 Iniciando em modo produção na porta {port}")
+        app.run(host='0.0.0.0', port=port, debug=False)
+    else:
+        # Desenvolvimento local
+        print(f"🔧 Iniciando em modo desenvolvimento na porta {port}")
+        app.run(debug=True, host='localhost', port=port)

@@ -13,14 +13,21 @@ from typing import Optional, List, Dict, Any
 import json
 
 # Detectar ambiente e usar caminho apropriado
-if os.environ.get('VERCEL'):
-    # No Vercel, usar /tmp (único diretório gravável)
+if os.environ.get('RAILWAY_ENVIRONMENT'):
+    # Railway: usar diretório de dados (persistente com volume)
+    data_dir = os.environ.get('RAILWAY_VOLUME_MOUNT_PATH', '/data')
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir, exist_ok=True)
+    DATABASE_PATH = os.path.join(data_dir, 'alphabot.db')
+    print(f"🚂 Railway: Usando database em {DATABASE_PATH}")
+elif os.environ.get('VERCEL'):
+    # Vercel: usar /tmp (efêmero - apenas para testes)
     DATABASE_PATH = '/tmp/alphabot.db'
-    print("🔧 Usando database em /tmp (Vercel)")
+    print("⚠️ Vercel: Usando database efêmero em /tmp")
 else:
-    # Localmente, usar diretório atual
+    # Local: usar diretório do backend
     DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'alphabot.db')
-    print(f"🔧 Usando database local: {DATABASE_PATH}")
+    print(f"🔧 Local: Usando database em {DATABASE_PATH}")
 
 
 def get_connection():
