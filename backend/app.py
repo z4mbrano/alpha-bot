@@ -3046,7 +3046,42 @@ def get_bot_response(bot_id: str, message: str, conversation_id: str | None = No
                 )
 
         append_message(conversation, "assistant", response_text)
-        return {"response": response_text, "conversation_id": conversation_id}
+        
+        # ============================================
+        # GERAR SUGESTÕES DE FOLLOW-UP PARA DRIVEBOT
+        # ============================================
+        suggestions = []
+        if bot_id == 'drivebot' and response_text and not any(
+            phrase in response_text.lower() for phrase in [
+                'envie o id', 'pasta do google drive', 'modo simulado', 
+                'indisponibilidade', 'não consegui'
+            ]
+        ):
+            # Só gera sugestões se temos dados e uma resposta válida
+            drive_state = conversation.get("drive", {})
+            if drive_state.get("summary"):
+                try:
+                    # Extrair metadados dos dados do Drive
+                    metadata = {
+                        'columns': list(drive_state.get("summary", {}).keys())[:15],
+                        'total_columns': len(drive_state.get("summary", {})),
+                        'date_columns': [col for col in drive_state.get("summary", {}).keys() 
+                                       if any(word in col.lower() for word in ['data', 'date', 'mes', 'ano', 'month'])],
+                        'has_data': True
+                    }
+                    
+                    # Gerar sugestões usando Gemini
+                    suggestions = generate_drivebot_suggestions(message, response_text, metadata)
+                    print(f"[DRIVEBOT SUGESTÕES] Geradas {len(suggestions)} sugestões")
+                except Exception as sugg_error:
+                    print(f"[DRIVEBOT SUGESTÕES] Erro ao gerar: {sugg_error}")
+                    suggestions = []
+        
+        return {
+            "response": response_text, 
+            "conversation_id": conversation_id,
+            "suggestions": suggestions
+        }
 
     except Exception as error:
         print(f"Erro geral no get_bot_response: {error}")
@@ -3257,6 +3292,101 @@ def alphabot_upload():
 
 # ============================================
 # 🚀 SPRINT 2: SUGESTÕES DE PERGUNTAS
+# ============================================
+# SUGESTÕES DE FOLLOW-UP PARA DRIVEBOT
+# ============================================
+def generate_drivebot_suggestions(original_question: str, answer: str, metadata: Dict[str, Any]) -> List[str]:
+    """
+    Gera 3 perguntas sugeridas inteligentes para DriveBot baseadas na resposta atual.
+    Adaptado para o contexto de análise de dados do Google Drive.
+    """
+    try:
+        # Contexto dos dados disponíveis
+        columns_context = f"Colunas disponíveis: {', '.join(metadata.get('columns', [])[:10])}"
+        
+        # Prompt específico para DriveBot
+        suggestion_prompt = f"""Você é um assistente especialista em análise de dados de Google Drive.
+
+**Contexto:**
+- Pergunta original do usuário: "{original_question}"
+- Resposta fornecida: "{answer[:300]}..."
+- {columns_context}
+
+**Tarefa:**
+Sugira EXATAMENTE 3 perguntas de aprofundamento que o usuário pode fazer para explorar mais os dados da pasta do Drive.
+
+**Regras:**
+1. As perguntas devem ser ESPECÍFICAS aos dados disponíveis
+2. Devem ser naturais e diretas (máximo 12 palavras cada)
+3. Devem explorar diferentes ângulos: temporal, comparativo, ranking, tendências
+4. Use linguagem de análise de negócios (vendas, produtos, regiões, clientes, etc)
+5. NÃO repita a pergunta original
+6. NÃO sugira análises impossíveis com os dados disponíveis
+
+**Formato de saída:**
+Retorne APENAS um JSON array com 3 strings, sem explicação adicional:
+["Pergunta 1?", "Pergunta 2?", "Pergunta 3?"]
+
+**Exemplos de boas sugestões:**
+- "Qual foi o produto mais vendido no último trimestre?"
+- "Como foi a performance da região Sul comparada ao Norte?"
+- "Quais categorias tiveram queda nas vendas?"
+- "Qual vendedor bateu a meta este mês?"
+"""
+        
+        # Usar API do DriveBot (DRIVEBOT_API_KEY)
+        genai.configure(api_key=DRIVEBOT_API_KEY or ALPHABOT_API_KEY)
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        response = model.generate_content(suggestion_prompt)
+        suggestions_text = response.text.strip()
+        
+        # Extrair JSON do texto (pode vir com markdown)
+        if '```json' in suggestions_text:
+            suggestions_text = suggestions_text.split('```json')[1].split('```')[0].strip()
+        elif '```' in suggestions_text:
+            suggestions_text = suggestions_text.split('```')[1].split('```')[0].strip()
+        
+        # Parse JSON
+        suggestions = json.loads(suggestions_text)
+        
+        # Validar e limitar
+        if isinstance(suggestions, list) and len(suggestions) > 0:
+            return suggestions[:3]  # Garantir máximo 3
+        else:
+            return generate_drivebot_fallback_suggestions(metadata)
+            
+    except Exception as e:
+        print(f"[DRIVEBOT SUGESTÕES] Erro ao gerar sugestões: {str(e)}")
+        return generate_drivebot_fallback_suggestions(metadata)
+
+def generate_drivebot_fallback_suggestions(metadata: Dict[str, Any]) -> List[str]:
+    """
+    Gera sugestões genéricas para DriveBot quando Gemini falha.
+    Baseado nos metadados dos dados do Drive.
+    """
+    suggestions = []
+    
+    # Se há colunas temporais, sugerir análise temporal
+    if metadata.get('date_columns'):
+        suggestions.append("Qual foi a evolução mês a mês?")
+    
+    # Sugestões baseadas em tipo de análise comum
+    suggestions.append("Me mostre o ranking dos top 5 itens")
+    suggestions.append("Qual região teve melhor desempenho?")
+    
+    # Sugestões padrão de negócios
+    if len(suggestions) < 3:
+        suggestions.extend([
+            "Quais são as principais tendências identificadas?",
+            "Há algum outlier ou valor atípico nos dados?",
+            "Como foi a distribuição por categoria?"
+        ])
+    
+    return suggestions[:3]
+
+# ============================================
+# SUGESTÕES DE FOLLOW-UP PARA ALPHABOT
 # ============================================
 def generate_follow_up_questions(original_question: str, answer: str, metadata: Dict[str, Any]) -> List[str]:
     """

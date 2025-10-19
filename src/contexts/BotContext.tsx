@@ -260,6 +260,7 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
           botId: active,
           text: data.response,
           time: Date.now(),
+          suggestions: data.suggestions || []  // 🚀 Sugestões para DriveBot
         }
         setStore((s) => ({ ...s, [active]: [...s[active], botMsg] }))
       }

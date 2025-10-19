@@ -48,6 +48,7 @@ export interface AlphabotSessionInfo {
 export interface DrivebotChatResponse {
   response: string
   conversation_id: string
+  suggestions?: string[]  // 🚀 SPRINT 2: Sugestões de perguntas follow-up
 }
 
 export interface DrivebotConversationInfo {
