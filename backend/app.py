@@ -2287,7 +2287,14 @@ Não adicione nenhuma outra explicação, markdown, ou texto extra. APENAS o JSO
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.5-flash')
-        response = model.generate_content(translator_prompt)
+        # Configuração otimizada para performance
+        generation_config = {
+            'temperature': 0.2,  # Mais determinístico para JSON
+            'top_p': 0.8,
+            'top_k': 20,
+            'max_output_tokens': 512  # Comandos JSON são pequenos
+        }
+        response = model.generate_content(translator_prompt, generation_config=generation_config)
         response_text = (response.text or "").strip()
         
         # Limpar markdown se houver
@@ -2712,7 +2719,14 @@ def format_analysis_result(question: str, raw_result: Dict[str, Any], api_key: s
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.5-flash')
-        response = model.generate_content(presenter_prompt)
+        # Configuração otimizada para performance
+        generation_config = {
+            'temperature': 0.3,  # Mais determinístico = mais rápido
+            'top_p': 0.8,
+            'top_k': 20,
+            'max_output_tokens': 1024  # Limitar tamanho da resposta
+        }
+        response = model.generate_content(presenter_prompt, generation_config=generation_config)
         response_text = (response.text or "").strip()
         
         if not response_text:
@@ -2732,6 +2746,9 @@ def handle_drivebot_followup(message: str, conversation: Dict[str, Any], api_key
     Processa perguntas do usuário sobre dados já descobertos usando arquitetura de dois prompts.
     AGORA COM MEMÓRIA CONVERSACIONAL.
     """
+    import time
+    start_time = time.time()
+    
     drive_state = conversation.get("drive", {})
     tables = drive_state.get("tables", [])
     
@@ -2871,7 +2888,13 @@ Pode me dar mais detalhes sobre o que você gostaria de saber? Ou prefere que eu
     
     # FASE 3: Formatar resultado em resposta amigável (COM HISTÓRICO)
     print(f"[DriveBot] Formatando resultado...")
+    format_start = time.time()
     formatted_response = format_analysis_result(message, raw_result, api_key, conversation_history)
+    
+    # Log de performance
+    total_time = time.time() - start_time
+    format_time = time.time() - format_start
+    print(f"[DRIVEBOT PERFORMANCE] Total: {total_time:.2f}s | Formatação: {format_time:.2f}s | Análise: {(total_time-format_time):.2f}s")
     
     return formatted_response
 
@@ -2957,7 +2980,29 @@ def get_bot_response(bot_id: str, message: str, conversation_id: str | None = No
             manual_answer = handle_drivebot_followup(message, conversation, api_key)
             if manual_answer:
                 append_message(conversation, "assistant", manual_answer)
-                return {"response": manual_answer, "conversation_id": conversation_id}
+                
+                # GERAR SUGESTÕES PARA DRIVEBOT APÓS ANÁLISE
+                suggestions = []
+                drive_state = conversation.get("drive", {})
+                if drive_state.get("summary"):
+                    try:
+                        metadata = {
+                            'columns': list(drive_state.get("summary", {}).keys())[:15],
+                            'total_columns': len(drive_state.get("summary", {})),
+                            'date_columns': [col for col in drive_state.get("summary", {}).keys() 
+                                           if any(word in col.lower() for word in ['data', 'date', 'mes', 'ano', 'month'])],
+                            'has_data': True
+                        }
+                        suggestions = generate_drivebot_suggestions(message, manual_answer, metadata)
+                        print(f"[DRIVEBOT SUGESTÕES] Geradas {len(suggestions)} sugestões após análise")
+                    except Exception as sugg_error:
+                        print(f"[DRIVEBOT SUGESTÕES] Erro ao gerar: {sugg_error}")
+                
+                return {
+                    "response": manual_answer, 
+                    "conversation_id": conversation_id,
+                    "suggestions": suggestions
+                }
 
         if bot_id == 'alphabot' and any(
             word in message.lower() for word in ['anexo', 'arquivo', 'planilha', 'csv', 'xlsx', 'enviei', 'anexei']
