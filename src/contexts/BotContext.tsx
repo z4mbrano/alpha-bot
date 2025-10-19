@@ -63,6 +63,7 @@ export type Message = {
   time: number
   isTyping?: boolean
   suggestions?: string[]  // 🚀 SPRINT 2: Sugestões de perguntas
+  sessionId?: string  // 🚀 SPRINT 2: ID da sessão (para exportar dados)
 }
 
 const initialMessages: Record<BotId, Message[]> = {
@@ -222,7 +223,8 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
           botId: active,
           text: data.answer,
           time: Date.now(),
-          suggestions: data.suggestions || []  // 🚀 Sugestões de perguntas
+          suggestions: data.suggestions || [],  // 🚀 Sugestões de perguntas
+          sessionId: data.session_id  // 🚀 SPRINT 2: ID da sessão para exportar
         }
         setStore((s) => ({ ...s, [active]: [...s[active], botMsg] }))
         

@@ -2,12 +2,14 @@ import React, { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
-import { Copy, Check, Sparkles } from 'lucide-react'
+import { Copy, Check, Sparkles, Download } from 'lucide-react'
 import { Message } from '../contexts/BotContext'
+import { exportAlphabotToExcel } from '../services/api'
 
 export default function MessageBubble({ m, onSendMessage }: { m: Message; onSendMessage?: (text: string) => void }) {
   const isUser = m.author === 'user'
   const [copied, setCopied] = useState(false)
+  const [downloading, setDownloading] = useState(false)
 
   const handleCopy = async () => {
     try {
@@ -16,6 +18,20 @@ export default function MessageBubble({ m, onSendMessage }: { m: Message; onSend
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
       console.error('Erro ao copiar:', err)
+    }
+  }
+
+  const handleDownload = async () => {
+    if (!m.sessionId) return
+    
+    try {
+      setDownloading(true)
+      await exportAlphabotToExcel(m.sessionId)
+    } catch (err) {
+      console.error('Erro ao fazer download:', err)
+      alert('Erro ao exportar dados. Tente novamente.')
+    } finally {
+      setDownloading(false)
     }
   }
 
@@ -106,19 +122,37 @@ export default function MessageBubble({ m, onSendMessage }: { m: Message; onSend
         )}
         </div>
         
-        {/* Botão de copiar - apenas para mensagens do bot */}
+        {/* Botões de ação - apenas para mensagens do bot */}
         {!isUser && (
-          <button
-            onClick={handleCopy}
-            className="absolute -right-10 top-2 p-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--bg)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
-            title={copied ? 'Copiado!' : 'Copiar resposta'}
-          >
-            {copied ? (
-              <Check size={14} className="text-green-400" />
-            ) : (
-              <Copy size={14} className="text-[var(--muted)]" />
+          <div className="absolute -right-10 top-2 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            {/* Botão de copiar */}
+            <button
+              onClick={handleCopy}
+              className="p-1.5 rounded bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--bg)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+              title={copied ? 'Copiado!' : 'Copiar resposta'}
+            >
+              {copied ? (
+                <Check size={14} className="text-green-400" />
+              ) : (
+                <Copy size={14} className="text-[var(--muted)]" />
+              )}
+            </button>
+            
+            {/* 🚀 SPRINT 2: Botão de download Excel (apenas AlphaBot com sessionId) */}
+            {m.botId === 'alphabot' && m.sessionId && (
+              <button
+                onClick={handleDownload}
+                disabled={downloading}
+                className="p-1.5 rounded bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--bg)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)] disabled:opacity-50 disabled:cursor-not-allowed"
+                title={downloading ? 'Baixando...' : 'Baixar dados como Excel'}
+              >
+                <Download 
+                  size={14} 
+                  className={`text-[var(--muted)] ${downloading ? 'animate-bounce' : ''}`} 
+                />
+              </button>
             )}
-          </button>
+          </div>
         )}
       </div>
       

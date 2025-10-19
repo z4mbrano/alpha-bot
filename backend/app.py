@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import google.generativeai as genai
 from google.oauth2 import service_account
@@ -3640,6 +3640,88 @@ Apresente APENAS a resposta final do Júri ao usuário.
             "error": f"Erro ao processar pergunta: {str(e)}",
             "session_id": session_id if 'session_id' in locals() else None
         }), 500
+
+@app.route('/api/alphabot/export', methods=['POST'])
+def alphabot_export():
+    """
+    Endpoint para exportar dados da sessão como arquivo Excel (.xlsx).
+    
+    Recebe: { "session_id": "abc123" }
+    Retorna: Arquivo Excel binário para download
+    """
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+        
+        if not session_id:
+            return jsonify({"error": "session_id é obrigatório"}), 400
+        
+        # Buscar DataFrame da sessão (usar ALPHABOT_SESSIONS em maiúsculo)
+        session_data = ALPHABOT_SESSIONS.get(session_id)
+        
+        if not session_data:
+            return jsonify({"error": "Sessão não encontrada ou expirou"}), 404
+        
+        df = session_data.get('dataframe')
+        
+        if df is None or df.empty:
+            return jsonify({"error": "Nenhum dado disponível para exportar"}), 404
+        
+        # Criar arquivo Excel em memória
+        output = io.BytesIO()
+        
+        # Usar ExcelWriter para aplicar formatação
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Dados')
+            
+            # Obter worksheet para aplicar formatação
+            workbook = writer.book
+            worksheet = writer.sheets['Dados']
+            
+            # Aplicar formatação ao cabeçalho
+            from openpyxl.styles import Font, PatternFill, Alignment
+            
+            header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+            header_font = Font(color='FFFFFF', bold=True)
+            
+            for cell in worksheet[1]:  # Primeira linha (cabeçalho)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+            
+            # Ajustar largura das colunas
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                
+                adjusted_width = min(max_length + 2, 50)  # Máximo 50
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+        
+        # Preparar para download
+        output.seek(0)
+        
+        # Nome do arquivo com timestamp
+        from datetime import datetime
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'alpha_insights_export_{timestamp}.xlsx'
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+        
+    except Exception as e:
+        print(f"[EXPORT] Erro: {str(e)}")
+        return jsonify({"error": f"Erro ao exportar dados: {str(e)}"}), 500
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
