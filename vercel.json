@@ -22,6 +22,14 @@
       "dest": "/backend/app.py"
     },
     {
+      "src": "/api/auth/(.*)",
+      "dest": "/backend/app.py"
+    },
+    {
+      "src": "/api/conversations/(.*)",
+      "dest": "/backend/app.py"
+    },
+    {
       "src": "/api/alphabot/(.*)",
       "dest": "/backend/app.py"
     },

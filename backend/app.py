@@ -3759,6 +3759,7 @@ def alphabot_chat():
     """
     Endpoint de chat para AlphaBot com motor de validação interna.
     Usa as três personas: Analista → Crítico → Júri
+    🔄 MULTI-USUÁRIO: Salva mensagens no banco se conversation_id fornecido
     """
     try:
         data = request.get_json()
@@ -3768,13 +3769,41 @@ def alphabot_chat():
         
         session_id = data.get('session_id')
         message = data.get('message')
+        conversation_id = data.get('conversation_id')  # 🆕 MULTI-USUÁRIO
+        user_id = data.get('user_id')  # 🆕 MULTI-USUÁRIO
         
         if not session_id or not message:
             return jsonify({"error": "session_id e message são obrigatórios"}), 400
         
+        # 🆕 MULTI-USUÁRIO: Salvar mensagem do usuário no banco
+        if conversation_id and user_id:
+            try:
+                database.add_message(
+                    conversation_id=conversation_id,
+                    author='user',
+                    text=message,
+                    time=int(datetime.now().timestamp() * 1000)
+                )
+            except Exception as db_error:
+                print(f"⚠️ Erro ao salvar mensagem do usuário: {db_error}")
+        
         # 🚀 VERIFICAR CACHE PRIMEIRO (SPRINT 1)
         cached_response = get_cached_response(session_id, message)
         if cached_response:
+            # 🆕 Salvar resposta em cache no banco também
+            if conversation_id and user_id:
+                try:
+                    database.add_message(
+                        conversation_id=conversation_id,
+                        author='alphabot',
+                        text=cached_response.get('answer', ''),
+                        time=int(datetime.now().timestamp() * 1000),
+                        chart_data=cached_response.get('chart'),
+                        suggestions=cached_response.get('suggestions')
+                    )
+                except Exception as db_error:
+                    print(f"⚠️ Erro ao salvar resposta em cache: {db_error}")
+            
             return jsonify(cached_response)
         
         # Verificar se a sessão existe
@@ -3882,6 +3911,21 @@ Apresente APENAS a resposta final do Júri ao usuário.
         
         # 🚀 ARMAZENAR NO CACHE (SPRINT 1)
         set_cached_response(session_id, message, response_data)
+        
+        # 🆕 MULTI-USUÁRIO: Salvar resposta do bot no banco
+        if conversation_id and user_id:
+            try:
+                database.add_message(
+                    conversation_id=conversation_id,
+                    author='alphabot',
+                    text=answer,
+                    time=int(datetime.now().timestamp() * 1000),
+                    chart_data=chart_data,
+                    suggestions=suggestions
+                )
+                print(f"✅ Mensagem salva na conversa {conversation_id}")
+            except Exception as db_error:
+                print(f"⚠️ Erro ao salvar resposta do bot: {db_error}")
         
         return jsonify(response_data), 200
         
@@ -4080,7 +4124,10 @@ def drivebot_export():
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
-    """Endpoint principal para chat com os bots"""
+    """
+    Endpoint principal para chat com os bots
+    🔄 MULTI-USUÁRIO: Salva mensagens no banco se conversation_id e user_id fornecidos
+    """
     try:
         data = request.get_json()
         
@@ -4090,15 +4137,43 @@ def chat():
         bot_id = data.get('bot_id')
         message = data.get('message')
         conversation_id = data.get('conversation_id')
+        user_id = data.get('user_id')  # 🆕 MULTI-USUÁRIO
         
         if not bot_id or not message:
             return jsonify({"error": "bot_id e message são obrigatórios"}), 400
+        
+        # 🆕 MULTI-USUÁRIO: Salvar mensagem do usuário no banco
+        if conversation_id and user_id:
+            try:
+                database.add_message(
+                    conversation_id=conversation_id,
+                    author='user',
+                    text=message,
+                    time=int(datetime.now().timestamp() * 1000)
+                )
+                print(f"✅ Mensagem do usuário salva na conversa {conversation_id}")
+            except Exception as db_error:
+                print(f"⚠️ Erro ao salvar mensagem do usuário: {db_error}")
             
         # Gerar resposta do bot
         result = get_bot_response(bot_id, message, conversation_id)
         
         if "error" in result:
             return jsonify(result), 500
+        
+        # 🆕 MULTI-USUÁRIO: Salvar resposta do bot no banco
+        if conversation_id and user_id and "response" in result:
+            try:
+                database.add_message(
+                    conversation_id=conversation_id,
+                    author=bot_id,
+                    text=result["response"],
+                    time=int(datetime.now().timestamp() * 1000),
+                    suggestions=result.get("suggestions")
+                )
+                print(f"✅ Resposta do bot salva na conversa {conversation_id}")
+            except Exception as db_error:
+                print(f"⚠️ Erro ao salvar resposta do bot: {db_error}")
             
         return jsonify(result)
         

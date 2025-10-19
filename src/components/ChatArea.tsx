@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useBot } from '../contexts/BotContext'
+import { useAuth } from '../contexts/AuthContext'
+import { useConversation } from '../contexts/ConversationContext'
 import MessageBubble from './MessageBubble'
 import CacheSettingsModal from './CacheSettingsModal'
 import { Paperclip, Send, X, Menu, BarChart2, Gem, Loader2, Trash2, Settings } from 'lucide-react'
@@ -33,6 +35,8 @@ const API_BASE_URL = import.meta.env.PROD
 
 export default function ChatArea() {
   const { active, messages, send, addMessage, clearConversation, isTyping } = useBot()
+  const { user } = useAuth()
+  const { activeConversationId, createNewConversation } = useConversation()
   const [text, setText] = useState('')
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [isUploading, setIsUploading] = useState(false)
@@ -77,6 +81,17 @@ export default function ChatArea() {
     
     setIsUploading(true)
     
+    // 🆕 MULTI-USUÁRIO: Criar conversa automaticamente se não existir
+    let conversationId = activeConversationId
+    if (user && !activeConversationId) {
+      try {
+        conversationId = await createNewConversation(active, `Upload: ${selectedFiles.map(f => f.name).join(', ')}`.substring(0, 50))
+        console.log(`✅ Conversa criada para upload: ${conversationId}`)
+      } catch (error) {
+        console.error('Erro ao criar conversa:', error)
+      }
+    }
+    
     const formData = new FormData()
     selectedFiles.forEach(file => {
       formData.append('files', file)
@@ -103,8 +118,15 @@ export default function ChatArea() {
       setSelectedFiles([])
       
       if (response.ok) {
-        // Armazenar session_id globalmente
-        localStorage.setItem('alphabot_session_id', data.session_id)
+        // 🆕 MULTI-USUÁRIO: Usar conversation_id como session_id (em vez de global)
+        if (conversationId) {
+          // Armazenar session_id vinculado à conversa
+          localStorage.setItem(`alphabot_session_${conversationId}`, data.session_id)
+          console.log(`✅ Session ${data.session_id} vinculado à conversa ${conversationId}`)
+        } else {
+          // Fallback: armazenar globalmente (compatibilidade)
+          localStorage.setItem('alphabot_session_id', data.session_id)
+        }
         
         // CORREÇÃO #3: Formatar relatório de diagnóstico no frontend (sem chamar LLM)
         const { metadata } = data

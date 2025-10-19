@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import type { ChartData } from '../types'
+import { useAuth } from './AuthContext'
+import { useConversation } from './ConversationContext'
+import * as api from '../services/api'
 
 // Mapa de mensagens de erro amigáveis
 const ERROR_MESSAGES: Record<string, string> = {
@@ -108,6 +111,10 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
   const [store, setStore] = useState<Record<BotId, Message[]>>(() => loadHistoryFromStorage())
   const [isTyping, setIsTyping] = useState(false)
   const storageKey = 'alpha-bot:conversation-ids'
+  
+  // 🆕 MULTI-USUÁRIO: Integração com autenticação e conversas
+  const { user } = useAuth()
+  const { activeConversationId, createNewConversation, switchConversation, getActiveConversation } = useConversation()
 
   const generateId = () => {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -159,6 +166,39 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
       window.localStorage.setItem('alpha-bot:message-history', JSON.stringify(store))
     }
   }, [store])
+  
+  // 🆕 MULTI-USUÁRIO: Carregar mensagens antigas quando trocar de conversa
+  useEffect(() => {
+    if (activeConversationId && user) {
+      const loadMessages = async () => {
+        try {
+          const messages = await api.getConversationMessages(activeConversationId, user.id)
+          
+          // Converter mensagens do banco para o formato Message
+          const convertedMessages: Message[] = messages.map(msg => ({
+            id: msg.id,
+            author: msg.author === 'user' ? 'user' : 'bot',
+            botId: active,
+            text: msg.text,
+            time: msg.time,
+            suggestions: msg.suggestions,
+            chart: msg.chart
+          }))
+          
+          // Atualizar store com mensagens carregadas
+          setStore((s) => ({ ...s, [active]: convertedMessages }))
+          console.log(`✅ ${convertedMessages.length} mensagens carregadas da conversa ${activeConversationId}`)
+        } catch (error) {
+          console.error('Erro ao carregar mensagens:', error)
+        }
+      }
+      
+      loadMessages()
+    } else if (!activeConversationId) {
+      // Limpar mensagens se não houver conversa ativa
+      setStore((s) => ({ ...s, [active]: [] }))
+    }
+  }, [activeConversationId, user, active])
 
   const addMessage = (message: Message) => {
     // Adiciona mensagem localmente sem chamar o backend
@@ -194,10 +234,30 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
     setIsTyping(true)
 
     try {
+      // 🆕 MULTI-USUÁRIO: Criar conversa automaticamente se não existir
+      let conversationId = activeConversationId
+      
+      if (user && !activeConversationId) {
+        // Criar nova conversa automaticamente
+        const newConvId = await createNewConversation(active, 'Nova Conversa')
+        conversationId = newConvId
+        console.log(`✅ Conversa criada automaticamente: ${newConvId}`)
+      }
+      
       // AlphaBot usa endpoint diferente
       if (active === 'alphabot') {
-        // Verificar se há session_id (arquivos já foram enviados)
-        const sessionId = localStorage.getItem('alphabot_session_id')
+        // 🆕 MULTI-USUÁRIO: Buscar session_id específico da conversa
+        let sessionId = null
+        
+        if (conversationId) {
+          // Buscar session vinculado à conversa
+          sessionId = localStorage.getItem(`alphabot_session_${conversationId}`)
+        }
+        
+        // Fallback: buscar session global
+        if (!sessionId) {
+          sessionId = localStorage.getItem('alphabot_session_id')
+        }
         
         if (!sessionId) {
           throw new Error('Por favor, anexe planilhas (.csv, .xlsx) primeiro usando o botão de anexo.')
@@ -211,6 +271,8 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
           body: JSON.stringify({
             session_id: sessionId,
             message: text,
+            conversation_id: conversationId,  // 🆕 MULTI-USUÁRIO
+            user_id: user?.id  // 🆕 MULTI-USUÁRIO
           }),
         })
 
@@ -243,7 +305,8 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
           body: JSON.stringify({
             bot_id: active,
             message: text,
-            conversation_id: conversationIds[active],
+            conversation_id: conversationId,  // 🆕 USA conversa ativa
+            user_id: user?.id  // 🆕 MULTI-USUÁRIO
           }),
         })
 
@@ -251,13 +314,6 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
         
         if (data.error) {
           throw new Error(data.error)
-        }
-
-        if (data.conversation_id && data.conversation_id !== conversationIds[active]) {
-          setConversationIds((prev) => {
-            const next = { ...prev, [active]: data.conversation_id as string }
-            return next
-          })
         }
 
         // Adicionar resposta do bot
