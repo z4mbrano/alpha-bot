@@ -274,7 +274,15 @@ ${periodSection}
         <div ref={feedRef} className="flex-1 overflow-auto px-4 md:px-8 py-6 flex flex-col gap-3 transition-fast">
           <div className="max-w-[900px] w-full mx-auto flex flex-col gap-3">
             {messages.map(m => (
-              <MessageBubble key={m.id} m={m} />
+              <MessageBubble 
+                key={m.id} 
+                m={m} 
+                onSendMessage={(suggestion) => {
+                  setText(suggestion)
+                  // Enviar automaticamente a sugestão
+                  send(suggestion)
+                }}
+              />
             ))}
             {isTyping && (
               <div className="max-w-[70%] self-start my-2">

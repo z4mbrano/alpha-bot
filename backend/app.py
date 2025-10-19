@@ -3255,6 +3255,100 @@ def alphabot_upload():
             "message": f"Erro interno ao processar arquivos: {str(e)}"
         }), 500
 
+# ============================================
+# 🚀 SPRINT 2: SUGESTÕES DE PERGUNTAS
+# ============================================
+def generate_follow_up_questions(original_question: str, answer: str, metadata: Dict[str, Any]) -> List[str]:
+    """
+    Gera 3 perguntas sugeridas inteligentes baseadas na resposta atual.
+    Usa Gemini para criar follow-ups contextuais.
+    """
+    try:
+        # Contexto dos dados disponíveis
+        columns_context = f"Colunas disponíveis: {', '.join(metadata['columns'][:10])}"
+        
+        # Prompt para geração de sugestões
+        suggestion_prompt = f"""Você é um assistente especialista em análise de dados.
+
+**Contexto:**
+- Pergunta original do usuário: "{original_question}"
+- Resposta fornecida: "{answer[:300]}..."
+- {columns_context}
+
+**Tarefa:**
+Sugira EXATAMENTE 3 perguntas de aprofundamento que o usuário pode fazer para explorar mais os dados.
+
+**Regras:**
+1. As perguntas devem ser ESPECÍFICAS aos dados disponíveis
+2. Devem ser naturais e diretas (máximo 10 palavras cada)
+3. Devem explorar diferentes ângulos: temporal, comparativo, ranking, causas
+4. NÃO repita a pergunta original
+5. NÃO sugira análises impossíveis com os dados disponíveis
+
+**Formato de saída:**
+Retorne APENAS um JSON array com 3 strings, sem explicação adicional:
+["Pergunta 1?", "Pergunta 2?", "Pergunta 3?"]
+
+**Exemplos de boas sugestões:**
+- "Qual região teve maior crescimento percentual?"
+- "Como foi a evolução mensal desse produto?"
+- "Quais os 3 piores performers deste mês?"
+"""
+        
+        genai.configure(api_key=ALPHABOT_API_KEY)
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        response = model.generate_content(suggestion_prompt)
+        suggestions_text = response.text.strip()
+        
+        # Extrair JSON do texto (pode vir com markdown)
+        if '```json' in suggestions_text:
+            suggestions_text = suggestions_text.split('```json')[1].split('```')[0].strip()
+        elif '```' in suggestions_text:
+            suggestions_text = suggestions_text.split('```')[1].split('```')[0].strip()
+        
+        # Parse JSON
+        suggestions = json.loads(suggestions_text)
+        
+        # Validar e limitar
+        if isinstance(suggestions, list) and len(suggestions) > 0:
+            return suggestions[:3]  # Garantir máximo 3
+        else:
+            return []
+            
+    except Exception as e:
+        print(f"[SUGESTÕES] Erro ao gerar sugestões: {str(e)}")
+        # Fallback: sugestões genéricas baseadas em metadata
+        return generate_fallback_suggestions(metadata)
+
+def generate_fallback_suggestions(metadata: Dict[str, Any]) -> List[str]:
+    """
+    Gera sugestões genéricas quando Gemini falha.
+    Baseado nos metadados dos dados.
+    """
+    suggestions = []
+    
+    # Se há colunas temporais, sugerir análise temporal
+    if metadata.get('date_columns'):
+        suggestions.append("Como foi a evolução ao longo do tempo?")
+    
+    # Se há muitas colunas, sugerir análise de correlação
+    if metadata.get('total_columns', 0) > 5:
+        suggestions.append("Quais são os top 10 registros?")
+        suggestions.append("Qual a distribuição por categoria principal?")
+    
+    # Sugestões padrão
+    if len(suggestions) < 3:
+        suggestions.extend([
+            "Me mostre um resumo estatístico completo",
+            "Quais são os valores extremos (máximo e mínimo)?",
+            "Há alguma tendência ou padrão interessante?"
+        ])
+    
+    return suggestions[:3]
+
+# ============================================
+
 @app.route('/api/alphabot/chat', methods=['POST'])
 def alphabot_chat():
     """
@@ -3356,10 +3450,14 @@ Apresente APENAS a resposta final do Júri ao usuário.
         # Aplicar limpeza de formatação Markdown
         answer = clean_markdown_formatting(answer)
         
+        # 🚀 SPRINT 2: Gerar sugestões de perguntas (follow-up)
+        suggestions = generate_follow_up_questions(message, answer, metadata)
+        
         # Preparar resposta
         response_data = {
             "answer": answer,
             "session_id": session_id,
+            "suggestions": suggestions,
             "metadata": {
                 "records_analyzed": len(df),
                 "columns_available": len(df.columns)

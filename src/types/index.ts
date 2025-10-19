@@ -14,6 +14,7 @@ export interface Message {
   text: string
   time: number
   isTyping?: boolean
+  suggestions?: string[]  // 🚀 SPRINT 2: Sugestões de perguntas
 }
 
 // API Response Types
@@ -31,6 +32,7 @@ export interface AlphabotUploadResponse {
 export interface AlphabotChatResponse {
   answer: string
   session_id: string
+  suggestions?: string[]  // 🚀 SPRINT 2: Sugestões de perguntas follow-up
 }
 
 export interface AlphabotSessionInfo {

@@ -62,6 +62,7 @@ export type Message = {
   text: string
   time: number
   isTyping?: boolean
+  suggestions?: string[]  // 🚀 SPRINT 2: Sugestões de perguntas
 }
 
 const initialMessages: Record<BotId, Message[]> = {
@@ -214,13 +215,14 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
           throw new Error(data.error)
         }
 
-        // Adicionar resposta do bot
+        // Adicionar resposta do bot com sugestões (SPRINT 2)
         const botMsg: Message = {
           id: 'b-' + Date.now(),
           author: 'bot',
           botId: active,
           text: data.answer,
           time: Date.now(),
+          suggestions: data.suggestions || []  // 🚀 Sugestões de perguntas
         }
         setStore((s) => ({ ...s, [active]: [...s[active], botMsg] }))
         

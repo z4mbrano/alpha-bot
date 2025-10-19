@@ -2,10 +2,10 @@ import React, { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
-import { Copy, Check } from 'lucide-react'
+import { Copy, Check, Sparkles } from 'lucide-react'
 import { Message } from '../contexts/BotContext'
 
-export default function MessageBubble({ m }: { m: Message }) {
+export default function MessageBubble({ m, onSendMessage }: { m: Message; onSendMessage?: (text: string) => void }) {
   const isUser = m.author === 'user'
   const [copied, setCopied] = useState(false)
 
@@ -121,6 +121,27 @@ export default function MessageBubble({ m }: { m: Message }) {
           </button>
         )}
       </div>
+      
+      {/* 🚀 SPRINT 2: Sugestões de perguntas (apenas mensagens do bot com sugestões) */}
+      {!isUser && m.suggestions && m.suggestions.length > 0 && (
+        <div className="mt-3 space-y-2">
+          <div className="flex items-center gap-2 text-xs text-[var(--muted)] mb-2">
+            <Sparkles size={12} />
+            <span>Perguntas sugeridas:</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {m.suggestions.map((suggestion, index) => (
+              <button
+                key={index}
+                onClick={() => onSendMessage?.(suggestion)}
+                className="text-xs px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--surface)]/50 hover:bg-[var(--surface)] hover:border-[var(--accent)]/50 transition-all focus:outline-none focus:ring-2 focus:ring-[var(--ring)] text-left"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
