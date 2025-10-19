@@ -3662,10 +3662,21 @@ def alphabot_export():
         if not session_data:
             return jsonify({"error": "Sessão não encontrada ou expirou"}), 404
         
-        df = session_data.get('dataframe')
+        # O DataFrame está armazenado como JSON string, converter de volta
+        df_json = session_data.get('dataframe')
         
-        if df is None or df.empty:
+        if df_json is None:
             return jsonify({"error": "Nenhum dado disponível para exportar"}), 404
+        
+        # Converter JSON para DataFrame
+        try:
+            df = pd.read_json(io.StringIO(df_json), orient='split')
+        except Exception as e:
+            print(f"[EXPORT] Erro ao converter JSON para DataFrame: {e}")
+            return jsonify({"error": "Erro ao processar dados da sessão"}), 500
+        
+        if df.empty:
+            return jsonify({"error": "Dataset vazio"}), 404
         
         # Criar arquivo Excel em memória
         output = io.BytesIO()
