@@ -2989,10 +2989,45 @@ def get_bot_response(bot_id: str, message: str, conversation_id: str | None = No
                     except Exception as sugg_error:
                         print(f"[DRIVEBOT SUGESTÕES] Erro ao gerar: {sugg_error}")
                 
+                # 🚀 SPRINT 2 - FEATURE 3: GRÁFICOS PARA DRIVEBOT
+                chart_data = None
+                tables = drive_state.get("tables", [])
+                
+                print(f"[DRIVEBOT GRÁFICO] Verificando se deve incluir gráfico para: {message}")
+                print(f"[DRIVEBOT GRÁFICO] Encontradas {len(tables)} tabelas no drive_state")
+                
+                if tables:
+                    for idx, table in enumerate(tables):
+                        df = table.get("df")
+                        print(f"[DRIVEBOT GRÁFICO] Tabela {idx}: df={'presente' if df is not None else 'None'}, empty={df.empty if df is not None else 'N/A'}")
+                        
+                        if df is not None and not df.empty:
+                            # Criar metadata para detecção de gráfico
+                            metadata_for_chart = {
+                                'date_columns': [col for col in df.columns 
+                                               if any(word in col.lower() for word in ['data', 'date', 'mes', 'ano', 'month'])]
+                            }
+                            
+                            print(f"[DRIVEBOT GRÁFICO] Metadata: {metadata_for_chart}")
+                            
+                            if should_include_chart(message, df, metadata_for_chart):
+                                print(f"[DRIVEBOT GRÁFICO] should_include_chart retornou True")
+                                chart_data = generate_chart_data(df, message, metadata_for_chart)
+                                if chart_data:
+                                    print(f"[DRIVEBOT GRÁFICO] ✅ Incluindo gráfico do tipo '{chart_data['type']}' com {len(chart_data['data'])} pontos")
+                                    break
+                                else:
+                                    print(f"[DRIVEBOT GRÁFICO] ❌ generate_chart_data retornou None")
+                            else:
+                                print(f"[DRIVEBOT GRÁFICO] should_include_chart retornou False")
+                else:
+                    print(f"[DRIVEBOT GRÁFICO] ❌ Nenhuma tabela disponível")
+                
                 return {
                     "response": manual_answer, 
                     "conversation_id": conversation_id,
-                    "suggestions": suggestions
+                    "suggestions": suggestions,
+                    "chart": chart_data  # 🚀 Incluir gráfico se gerado
                 }
 
         if bot_id == 'alphabot' and any(
@@ -3113,36 +3148,12 @@ def get_bot_response(bot_id: str, message: str, conversation_id: str | None = No
                     print(f"[DRIVEBOT SUGESTÕES] Erro ao gerar: {sugg_error}")
                     suggestions = []
         
-        # ============================================
-        # 🚀 SPRINT 2 - FEATURE 3: GRÁFICOS PARA DRIVEBOT
-        # ============================================
-        chart_data = None
-        if bot_id == 'drivebot':
-            drive_state = conversation.get("drive", {})
-            tables = drive_state.get("tables", [])
-            
-            # Se temos dados do Drive, tentar gerar gráfico
-            if tables:
-                for table in tables:
-                    df = table.get("df")
-                    if df is not None and not df.empty:
-                        # Criar metadata para detecção de gráfico
-                        metadata_for_chart = {
-                            'date_columns': [col for col in df.columns 
-                                           if any(word in col.lower() for word in ['data', 'date', 'mes', 'ano', 'month'])]
-                        }
-                        
-                        if should_include_chart(message, df, metadata_for_chart):
-                            chart_data = generate_chart_data(df, message, metadata_for_chart)
-                            if chart_data:
-                                print(f"[DRIVEBOT GRÁFICO] Incluindo gráfico do tipo '{chart_data['type']}' com {len(chart_data['data'])} pontos")
-                                break
-        
+        # Este código nunca é alcançado para DriveBot (retorna antes)
+        # Mantido apenas como fallback para outros casos
         return {
             "response": response_text, 
             "conversation_id": conversation_id,
-            "suggestions": suggestions,
-            "chart": chart_data  # 🚀 Incluir gráfico se gerado
+            "suggestions": suggestions
         }
 
     except Exception as error:
