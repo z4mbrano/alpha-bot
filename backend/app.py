@@ -2287,12 +2287,9 @@ Não adicione nenhuma outra explicação, markdown, ou texto extra. APENAS o JSO
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.5-flash')
-        # Configuração otimizada para performance
+        # Configuração leve: apenas ajusta temperatura para consistência
         generation_config = {
-            'temperature': 0.2,  # Mais determinístico para JSON
-            'top_p': 0.8,
-            'top_k': 20,
-            'max_output_tokens': 512  # Comandos JSON são pequenos
+            'temperature': 0.3  # Mais determinístico para JSON
         }
         response = model.generate_content(translator_prompt, generation_config=generation_config)
         response_text = (response.text or "").strip()
@@ -2719,14 +2716,8 @@ def format_analysis_result(question: str, raw_result: Dict[str, Any], api_key: s
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.5-flash')
-        # Configuração otimizada para performance
-        generation_config = {
-            'temperature': 0.3,  # Mais determinístico = mais rápido
-            'top_p': 0.8,
-            'top_k': 20,
-            'max_output_tokens': 1024  # Limitar tamanho da resposta
-        }
-        response = model.generate_content(presenter_prompt, generation_config=generation_config)
+        # Sem limites de tokens - deixar Gemini gerar resposta completa
+        response = model.generate_content(presenter_prompt)
         response_text = (response.text or "").strip()
         
         if not response_text:
