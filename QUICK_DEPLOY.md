@@ -1,4 +1,19 @@
-# ⚡ Guia Rápido - Deploy no Vercel
+# ⚡ Guia Rápido - Deploy no Vercel (ATUALIZADO)
+
+## 🐛 CORREÇÕES APLICADAS - Erro 500 Resolvido
+
+### ✅ O que foi corrigido:
+1. Database path dinâmico (detecta Vercel e usa `/tmp`)
+2. Inicialização segura do database com try-catch
+3. Error handling detalhado nos endpoints de auth
+4. Validação de `request.json` antes de usar
+
+### ⚠️ IMPORTANTE: SQLite no Vercel é Efêmero
+- ❌ Dados são perdidos quando a função reinicia
+- ✅ Funciona para **TESTES**, mas não para produção
+- 🎯 **Recomendado**: Migrar para PostgreSQL após testar
+
+---
 
 ## 🎯 TL;DR - Deploy em 5 Passos
 

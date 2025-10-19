@@ -23,11 +23,16 @@ import database  # Sistema de banco de dados multi-usuário
 # Carregar variáveis de ambiente
 load_dotenv()
 
-# Inicializar banco de dados
-database.init_database()
-
 app = Flask(__name__)
 CORS(app)  # Permitir requisições do frontend
+
+# Inicializar banco de dados (com tratamento de erro)
+try:
+    database.init_database()
+    print("✅ Database inicializado com sucesso")
+except Exception as e:
+    print(f"⚠️ Aviso ao inicializar database: {e}")
+    # Continuar mesmo se houver erro - será inicializado no primeiro acesso
 
 # ============================================
 # 🚀 CACHE DE RESPOSTAS (SPRINT 1 - Quick Wins)
@@ -4246,7 +4251,16 @@ def register():
         return '', 204
     
     try:
+        # Tentar inicializar database se ainda não foi inicializado
+        try:
+            database.init_database()
+        except Exception as init_error:
+            print(f"⚠️ Database já inicializado ou erro: {init_error}")
+        
         data = request.json
+        if not data:
+            return jsonify({"error": "Dados não fornecidos"}), 400
+        
         username = data.get('username', '').strip()
         password = data.get('password', '')
         
@@ -4273,8 +4287,15 @@ def register():
             return jsonify({"error": "Username já existe"}), 409
     
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         print(f"❌ Erro no registro: {e}")
-        return jsonify({"error": "Erro ao registrar usuário"}), 500
+        print(f"❌ Stack trace: {error_details}")
+        return jsonify({
+            "error": "Erro ao registrar usuário",
+            "details": str(e),
+            "type": type(e).__name__
+        }), 500
 
 
 @app.route('/api/auth/login', methods=['POST', 'OPTIONS'])
@@ -4285,6 +4306,9 @@ def login():
     
     try:
         data = request.json
+        if not data:
+            return jsonify({"error": "Dados não fornecidos"}), 400
+        
         username = data.get('username', '').strip()
         password = data.get('password', '')
         
@@ -4307,8 +4331,15 @@ def login():
             return jsonify({"error": "Credenciais inválidas"}), 401
     
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         print(f"❌ Erro no login: {e}")
-        return jsonify({"error": "Erro ao fazer login"}), 500
+        print(f"❌ Stack trace: {error_details}")
+        return jsonify({
+            "error": "Erro ao fazer login",
+            "details": str(e),
+            "type": type(e).__name__
+        }), 500
 
 
 @app.route('/api/auth/me', methods=['GET'])

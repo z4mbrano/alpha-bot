@@ -4,6 +4,7 @@ Autor: ALPHABOT
 Data: 2025-10-19
 """
 
+import os
 import sqlite3
 import hashlib
 import secrets
@@ -11,7 +12,15 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 import json
 
-DATABASE_PATH = 'alphabot.db'
+# Detectar ambiente e usar caminho apropriado
+if os.environ.get('VERCEL'):
+    # No Vercel, usar /tmp (único diretório gravável)
+    DATABASE_PATH = '/tmp/alphabot.db'
+    print("🔧 Usando database em /tmp (Vercel)")
+else:
+    # Localmente, usar diretório atual
+    DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'alphabot.db')
+    print(f"🔧 Usando database local: {DATABASE_PATH}")
 
 
 def get_connection():
