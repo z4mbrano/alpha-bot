@@ -15,8 +15,12 @@ import type {
   ErrorResponse,
 } from '../types'
 
-// Configuração
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+// Configuração da URL da API
+// Em produção (Vercel): usa '' (vazio) para caminhos relativos (ex: /api/...)
+// Em desenvolvimento: usa variável de ambiente ou http://localhost:5000
+const API_BASE_URL = import.meta.env.PROD 
+  ? '' // Produção: usa caminhos relativos, Vercel roteia /api/* para backend
+  : (import.meta.env.VITE_API_URL || 'http://localhost:5000') // Dev: localhost
 
 /**
  * Classe de erro customizada para erros da API

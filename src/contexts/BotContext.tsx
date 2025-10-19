@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 
-// API Base URL - usa variável de ambiente ou localhost para desenvolvimento
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+// API Base URL - Em produção usa caminhos relativos, em dev usa localhost
+const API_BASE_URL = import.meta.env.PROD 
+  ? '' // Produção: caminhos relativos (Vercel roteia /api/* para backend)
+  : (import.meta.env.VITE_API_URL || 'http://localhost:5000') // Dev: localhost
 
 export type BotId = 'alphabot' | 'drivebot'
 
