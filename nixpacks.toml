@@ -1,4 +1,7 @@
 # Nixpacks configuration for Railway
+# Força Python e ignora Node.js
+providers = ["python"]
+
 [phases.setup]
 nixPkgs = ["python39"]
 

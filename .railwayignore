@@ -1,0 +1,20 @@
+# Ignorar frontend (será deployado no Vercel)
+node_modules/
+package.json
+package-lock.json
+vite.config.ts
+tsconfig.json
+src/
+dist/
+index.html
+
+# Ignorar configs do frontend
+postcss.config.cjs
+tailwind.config.cjs
+vercel.json
+
+# Ignorar arquivos desnecessários
+.git/
+.vscode/
+*.md
+!backend/
