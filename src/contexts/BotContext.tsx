@@ -105,7 +105,7 @@ type BotContextType = {
 const BotContext = createContext<BotContextType | undefined>(undefined)
 
 export function BotProvider({ children }: { children: React.ReactNode }) {
-  const [active, setActive] = useState<BotId>('alphabot')
+  const [active, setActiveBot] = useState<BotId>('alphabot')
   const [store, setStore] = useState<Record<BotId, Message[]>>(() => loadHistoryFromStorage())
   const [isTyping, setIsTyping] = useState(false)
   const storageKey = 'alpha-bot:conversation-ids'
@@ -113,6 +113,16 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
   // 🆕 MULTI-USUÁRIO: Integração com autenticação e conversas
   const { user } = useAuth()
   const { activeConversationId, createNewConversation, switchConversation, getActiveConversation } = useConversation()
+
+  // 🆕 CORREÇÃO: Wrapper para setActive que limpa mensagens ao trocar de bot
+  const setActive = (newBotId: BotId) => {
+    if (newBotId !== active) {
+      // Limpar mensagens do bot anterior ao trocar
+      setStore((s) => ({ ...s, [newBotId]: [] }))
+      console.log(`🔄 Trocando para ${newBotId}, limpando mensagens`)
+    }
+    setActiveBot(newBotId)
+  }
 
   const generateId = () => {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
