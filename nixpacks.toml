@@ -1,14 +1,6 @@
 # Nixpacks configuration for Railway
-providers = []
-
 [phases.setup]
-nixPkgs = ["python39", "postgresql"]
-
-[phases.install]
-cmds = ["pip install -r backend/requirements.txt"]
-
-[phases.build]
-cmds = ["echo 'Build phase complete'"]
+nixPkgs = ["python39"]
 
 [start]
 cmd = "cd backend && python app.py"
