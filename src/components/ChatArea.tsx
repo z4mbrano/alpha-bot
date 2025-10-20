@@ -28,10 +28,8 @@ function getUploadErrorMessage(error: unknown): string {
   return `❌ Erro ao enviar arquivos: ${errorText}`
 }
 
-// API Base URL - Em produção usa caminhos relativos, em dev usa localhost
-const API_BASE_URL = import.meta.env.PROD 
-  ? '' // Produção: caminhos relativos (Vercel roteia /api/* para backend)
-  : (import.meta.env.VITE_API_URL || 'http://localhost:5000') // Dev: localhost
+// API Base URL - Usa variável de ambiente VITE_API_URL (Railway em produção) ou localhost em dev
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 export default function ChatArea() {
   const { active, messages, send, addMessage, clearConversation, isTyping } = useBot()
