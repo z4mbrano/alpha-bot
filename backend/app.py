@@ -4264,6 +4264,8 @@ def register():
         username = data.get('username', '').strip()
         password = data.get('password', '')
         
+        print(f"📝 Tentativa de REGISTRO: username='{username}'")
+        
         # Validações
         if not username or len(username) < 3:
             return jsonify({"error": "Username deve ter pelo menos 3 caracteres"}), 400
@@ -4273,6 +4275,7 @@ def register():
         
         # Criar usuário
         user = database.create_user(username, password)
+        print(f"📝 Resultado registro: {'✅ Criado' if user else '❌ Já existe'}")
         
         if user:
             return jsonify({
@@ -4312,11 +4315,14 @@ def login():
         username = data.get('username', '').strip()
         password = data.get('password', '')
         
+        print(f"🔐 Tentativa de LOGIN: username='{username}'")
+        
         if not username or not password:
             return jsonify({"error": "Username e senha são obrigatórios"}), 400
         
         # Autenticar
         user = database.authenticate_user(username, password)
+        print(f"🔐 Resultado autenticação: {'✅ Sucesso' if user else '❌ Falhou'}")
         
         if user:
             return jsonify({
