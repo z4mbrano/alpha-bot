@@ -2755,7 +2755,7 @@ def format_analysis_result(question: str, raw_result: Dict[str, Any], api_key: s
         return "Desculpe, não consegui formatar a resposta. Aqui estão os dados brutos:\n\n" + json.dumps(raw_result, indent=2, ensure_ascii=False, default=str)
 
 
-def handle_drivebot_followup(message: str, conversation: Dict[str, Any], api_key: str) -> str | None:
+def handle_drivebot_followup(message: str, conversation: Dict[str, Any], api_key: str) -> Optional[str]:
     """
     Processa perguntas do usuário sobre dados já descobertos usando arquitetura de dois prompts.
     AGORA COM MEMÓRIA CONVERSACIONAL.
@@ -2912,7 +2912,7 @@ Pode me dar mais detalhes sobre o que você gostaria de saber? Ou prefere que eu
     
     return formatted_response
 
-def get_bot_response(bot_id: str, message: str, conversation_id: str | None = None) -> Dict[str, Any]:
+def get_bot_response(bot_id: str, message: str, conversation_id: Optional[str] = None) -> Dict[str, Any]:
     """Gera resposta usando Google AI para o bot específico com memória de conversa simples."""
     try:
         if conversation_id is None or not isinstance(conversation_id, str) or not conversation_id.strip():
@@ -2935,7 +2935,7 @@ def get_bot_response(bot_id: str, message: str, conversation_id: str | None = No
             append_message(conversation, "assistant", error_msg)
             return {"error": error_msg, "conversation_id": conversation_id}
 
-        def extract_drive_id(text: str) -> str | None:
+        def extract_drive_id(text: str) -> Optional[str]:
             import re
 
             url_pattern = r'drive\.google\.com/drive/folders/([a-zA-Z0-9_-]+)'

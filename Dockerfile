@@ -1,5 +1,6 @@
 # Dockerfile para Railway
-FROM python:3.9-slim
+# Usando Python 3.10 para melhor compatibilidade
+FROM python:3.10-slim
 
 # Definir diretório de trabalho
 WORKDIR /app
