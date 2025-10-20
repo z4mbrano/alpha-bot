@@ -117,9 +117,16 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
   // 🆕 CORREÇÃO: Wrapper para setActive que limpa mensagens ao trocar de bot
   const setActive = (newBotId: BotId) => {
     if (newBotId !== active) {
-      // Limpar mensagens do bot anterior ao trocar
+      console.log(`🔄 Trocando de ${active} → ${newBotId}`)
+      
+      // Limpar mensagens do NOVO bot antes de trocar
       setStore((s) => ({ ...s, [newBotId]: [] }))
-      console.log(`🔄 Trocando para ${newBotId}, limpando mensagens`)
+      
+      // Se houver conversa ativa mas for do bot errado, limpar também
+      const activeConv = getActiveConversation()
+      if (activeConv && activeConv.bot_type !== newBotId) {
+        console.log(`⚠️ Conversa ativa é do bot "${activeConv.bot_type}", mas você está trocando para "${newBotId}". Limpando tela.`)
+      }
     }
     setActiveBot(newBotId)
   }
@@ -180,13 +187,29 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
     if (activeConversationId && user) {
       const loadMessages = async () => {
         try {
+          // 🔍 Verificar se a conversa ativa é do bot correto
+          const activeConv = getActiveConversation()
+          
+          if (!activeConv) {
+            console.log('⚠️ Conversa ativa não encontrada')
+            setStore((s) => ({ ...s, [active]: [] }))
+            return
+          }
+          
+          // 🔒 CORREÇÃO: Só carregar mensagens se a conversa for do bot ativo
+          if (activeConv.bot_type !== active) {
+            console.log(`🔄 Conversa ${activeConversationId} é do bot "${activeConv.bot_type}", mas você está em "${active}". Limpando mensagens.`)
+            setStore((s) => ({ ...s, [active]: [] }))
+            return
+          }
+          
           const messages = await api.getConversationMessages(activeConversationId, user.id)
           
           // Converter mensagens do banco para o formato Message
           const convertedMessages: Message[] = messages.map(msg => ({
             id: msg.id,
             author: msg.author === 'user' ? 'user' : 'bot',
-            botId: active,
+            botId: activeConv.bot_type as BotId, // Usar o bot_type da conversa
             text: msg.text,
             time: msg.time,
             suggestions: msg.suggestions,
@@ -195,9 +218,10 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
           
           // Atualizar store com mensagens carregadas
           setStore((s) => ({ ...s, [active]: convertedMessages }))
-          console.log(`✅ ${convertedMessages.length} mensagens carregadas da conversa ${activeConversationId}`)
+          console.log(`✅ ${convertedMessages.length} mensagens carregadas da conversa ${activeConversationId} (${activeConv.bot_type})`)
         } catch (error) {
           console.error('Erro ao carregar mensagens:', error)
+          setStore((s) => ({ ...s, [active]: [] }))
         }
       }
       
@@ -206,7 +230,7 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
       // Limpar mensagens se não houver conversa ativa
       setStore((s) => ({ ...s, [active]: [] }))
     }
-  }, [activeConversationId, user, active])
+  }, [activeConversationId, user, active, getActiveConversation])
 
   const addMessage = (message: Message) => {
     // Adiciona mensagem localmente sem chamar o backend
