@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Sun, Moon, Menu, BarChart2, Gem, LogOut, User, Plus, Trash2, MessageSquare } from 'lucide-react'
+import { Sun, Moon, Menu, BarChart2, Gem, LogOut, User, Plus, Trash2, MessageSquare, Edit2 } from 'lucide-react'
 import { useTheme } from '../contexts/ThemeContext'
 import { useBot, BotId } from '../contexts/BotContext'
 import { useAuth } from '../contexts/AuthContext'
@@ -14,9 +14,41 @@ export default function Sidebar() {
   const { theme, toggle } = useTheme()
   const { active, setActive } = useBot()
   const { user, logout } = useAuth()
-  const { conversations, activeConversationId, loading, createNewConversation, switchConversation, deleteConversation } = useConversation()
+  const { conversations, activeConversationId, loading, createNewConversation, switchConversation, deleteConversation, updateConversationTitle } = useConversation()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [newTitle, setNewTitle] = useState('')
+
+  const startRenaming = (conv: any) => {
+    setRenamingId(conv.id)
+    setNewTitle(conv.title)
+  }
+
+  const cancelRenaming = () => {
+    setRenamingId(null)
+    setNewTitle('')
+  }
+
+  const confirmRename = async () => {
+    if (renamingId && newTitle.trim()) {
+      try {
+        await updateConversationTitle(renamingId, newTitle.trim())
+        setRenamingId(null)
+        setNewTitle('')
+      } catch (error) {
+        // Erro já tratado no contexto
+      }
+    }
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      confirmRename()
+    } else if (e.key === 'Escape') {
+      cancelRenaming()
+    }
+  }
 
   // Listen to global events to control sidebar on mobile
   useEffect(() => {
@@ -142,34 +174,62 @@ export default function Sidebar() {
                     .map(conv => (
                       <div
                         key={conv.id}
-                        className={`group flex items-center gap-2 p-2 rounded-md transition-fast cursor-pointer ${
+                        className={`group flex items-center gap-2 p-2 rounded-md transition-fast ${
                           activeConversationId === conv.id
                             ? 'bg-[var(--accent)]/20 border border-[var(--accent)]/30'
                             : 'hover:bg-white/5 border border-transparent'
                         }`}
-                        onClick={() => switchConversation(conv.id)}
                       >
                         <MessageSquare size={14} className="text-[var(--muted)] shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-xs font-medium text-[var(--text)] truncate">
-                            {conv.title}
-                          </div>
+                        <div 
+                          className="flex-1 min-w-0 cursor-pointer"
+                          onClick={() => renamingId !== conv.id && switchConversation(conv.id)}
+                        >
+                          {renamingId === conv.id ? (
+                            <input
+                              type="text"
+                              value={newTitle}
+                              onChange={(e) => setNewTitle(e.target.value)}
+                              onKeyDown={handleKeyPress}
+                              onBlur={confirmRename}
+                              className="w-full text-xs font-medium bg-transparent border border-[var(--accent)] rounded px-1 py-0.5 text-[var(--text)] focus:outline-none"
+                              autoFocus
+                            />
+                          ) : (
+                            <div className="text-xs font-medium text-[var(--text)] truncate">
+                              {conv.title}
+                            </div>
+                          )}
                           <div className="text-[10px] text-[var(--muted)]">
                             {new Date(conv.updated_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
                           </div>
                         </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            if (confirm('Deletar esta conversa?')) {
-                              deleteConversation(conv.id)
-                            }
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/20 text-red-400 transition-fast"
-                          title="Deletar"
-                        >
-                          <Trash2 size={12} />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          {renamingId !== conv.id && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                startRenaming(conv)
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-[var(--accent)]/20 text-[var(--accent)] transition-fast"
+                              title="Renomear"
+                            >
+                              <Edit2 size={12} />
+                            </button>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (confirm('Deletar esta conversa?')) {
+                                deleteConversation(conv.id)
+                              }
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/20 text-red-400 transition-fast"
+                            title="Deletar"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
                       </div>
                     ))
                 )}

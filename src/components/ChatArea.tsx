@@ -242,7 +242,7 @@ ${periodSection}
                 {botIcon}
               </div>
               <div>
-                <div className="leading-none font-extralight text-[var(--accent)]">{botName}</div>
+                <div className="leading-none font-extralight bg-gradient-to-r from-[var(--accent)] to-purple-400 bg-clip-text text-transparent">{botName}</div>
                 <div className="text-xs text-[var(--muted)] leading-none mt-1">{botTagline}</div>
               </div>
             </div>
