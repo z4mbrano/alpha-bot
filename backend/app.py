@@ -3601,11 +3601,6 @@ def should_include_chart(question: str, df: pd.DataFrame, metadata: Dict[str, An
     question_lower = question.lower()
     has_keywords = any(keyword in question_lower for keyword in chart_keywords)
     
-    # Debug: Log da detecção de keywords
-    if has_keywords:
-        matched_keywords = [k for k in chart_keywords if k in question_lower]
-        print(f"[GRÁFICO DEBUG] Keywords encontradas: {matched_keywords}")
-    
     # Verificar se há colunas numéricas
     numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
     has_numeric = len(numeric_cols) > 0
@@ -3620,14 +3615,8 @@ def should_include_chart(question: str, df: pd.DataFrame, metadata: Dict[str, An
     ]
     has_categorical = len(categorical_cols) > 0
     
-    # Debug: Log das condições
-    print(f"[GRÁFICO DEBUG] has_keywords: {has_keywords}, has_numeric: {has_numeric}, has_date: {has_date}, has_categorical: {has_categorical}")
-    
     # Incluir gráfico se: tem keywords E tem dados numéricos E (tem temporal OU categórico)
-    should_include = has_keywords and has_numeric and (has_date or has_categorical)
-    print(f"[GRÁFICO DEBUG] Resultado final: {should_include}")
-    
-    return should_include
+    return has_keywords and has_numeric and (has_date or has_categorical)
 
 def generate_chart_data(df: pd.DataFrame, question: str, metadata: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
@@ -3644,7 +3633,6 @@ def generate_chart_data(df: pd.DataFrame, question: str, metadata: Dict[str, Any
     """
     try:
         question_lower = question.lower()
-        print(f"[GRÁFICO DEBUG] Analisando pergunta: '{question}'")
         
         # Detectar tipo de análise baseado na pergunta
         is_temporal = any(word in question_lower for word in ['evolução', 'evolucao', 'tendência', 'tendencia', 'ao longo', 'temporal', 'mensal', 'anual', 'diário', 'diario'])
@@ -3653,12 +3641,9 @@ def generate_chart_data(df: pd.DataFrame, question: str, metadata: Dict[str, Any
         is_ranking = any(word in question_lower for word in ['ranking', 'top', 'maiores', 'menores', 'melhores', 'piores'])
         is_comparison = any(word in question_lower for word in ['comparar', 'compare', 'comparação', 'comparacao', 'versus', 'vs', 'entre'])
         
-        print(f"[GRÁFICO DEBUG] Tipos detectados - temporal: {is_temporal}, monthly_comparison: {is_monthly_comparison}, distribution: {is_distribution}, ranking: {is_ranking}, comparison: {is_comparison}")
-        
         # Colunas numéricas disponíveis
         numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
         if not numeric_cols:
-            print("[GRÁFICO DEBUG] Nenhuma coluna numérica encontrada")
             return None
         
         # Escolher coluna numérica mais relevante
@@ -3670,58 +3655,33 @@ def generate_chart_data(df: pd.DataFrame, question: str, metadata: Dict[str, Any
                 value_col = col
                 break
         
-        print(f"[GRÁFICO DEBUG] Coluna de valor selecionada: {value_col}")
-        print(f"[GRÁFICO DEBUG] Colunas de data disponíveis: {metadata.get('date_columns', [])}")
-        
         # GRÁFICO TEMPORAL MENSAL - Para perguntas sobre comparação mensal ou temporal
         if (is_temporal or is_monthly_comparison) and metadata.get('date_columns'):
-            print(f"[GRÁFICO DEBUG] Gerando gráfico temporal mensal. is_temporal: {is_temporal}, is_monthly_comparison: {is_monthly_comparison}")
             date_col = metadata['date_columns'][0]
-            print(f"[GRÁFICO DEBUG] Coluna de data: {date_col}, tipo: {df[date_col].dtype}")
-            
-            # Criar uma cópia do DataFrame para não modificar o original
-            df_copy = df.copy()
             
             # Converter coluna de data para datetime se necessário
-            if df_copy[date_col].dtype == 'object':
-                df_copy[date_col] = pd.to_datetime(df_copy[date_col], errors='coerce')
-            
-            # Remover linhas com datas inválidas
-            df_copy = df_copy.dropna(subset=[date_col])
+            if df[date_col].dtype == 'object':
+                df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
             
             # Extrair mês e ano para agrupamento mensal
-            df_copy['month_year'] = df_copy[date_col].dt.to_period('M')
+            df['month_year'] = df[date_col].dt.to_period('M').astype(str)
             
             # Agrupar por mês e somar valores
-            grouped = df_copy.groupby('month_year')[value_col].sum().reset_index()
+            grouped = df.groupby('month_year')[value_col].sum().reset_index()
             grouped = grouped.sort_values('month_year').head(20)  # Máximo 20 pontos
-            
-            print(f"[GRÁFICO DEBUG] Dados agrupados por mês: {len(grouped)} registros")
-            print(f"[GRÁFICO DEBUG] Amostra dos dados: {grouped.head()}")
             
             chart_data = []
             for _, row in grouped.iterrows():
-                # Converter period para string mais legível
-                month_str = str(row['month_year'])
-                try:
-                    # Tentar formatar como "Jan/2024"
-                    period = pd.Period(month_str)
-                    month_name = period.strftime('%b/%Y')
-                except:
-                    month_name = month_str
-                
                 chart_data.append({
-                    "Mês": month_name,
-                    "Valor": float(row[value_col])
+                    "month_year": str(row['month_year']),
+                    str(value_col): float(row[value_col])
                 })
-            
-            print(f"[GRÁFICO DEBUG] Chart data gerado: {chart_data}")
             
             return {
                 "type": "bar",  # Mudança: usar bar chart para comparação mensal
                 "data": chart_data,
-                "x_axis": "Mês",
-                "y_axis": "Valor",
+                "x_axis": "month_year",
+                "y_axis": str(value_col),
                 "title": f"Comparação Mensal de {value_col}"
             }
         
@@ -3736,15 +3696,15 @@ def generate_chart_data(df: pd.DataFrame, question: str, metadata: Dict[str, Any
             chart_data = []
             for _, row in grouped.iterrows():
                 chart_data.append({
-                    "Data": str(row[date_col]),
-                    "Valor": float(row[value_col])
+                    str(date_col): str(row[date_col]),
+                    str(value_col): float(row[value_col])
                 })
             
             return {
                 "type": "line",
                 "data": chart_data,
-                "x_axis": "Data",
-                "y_axis": "Valor",
+                "x_axis": str(date_col),
+                "y_axis": str(value_col),
                 "title": f"Evolução de {value_col}"
             }
         
@@ -3775,14 +3735,14 @@ def generate_chart_data(df: pd.DataFrame, question: str, metadata: Dict[str, Any
             chart_data = []
             for _, row in distribution.iterrows():
                 chart_data.append({
-                    "Categoria": str(row[category_col]),
-                    "Quantidade": int(row['Quantidade'])
+                    str(category_col): str(row[category_col]),
+                    'Quantidade': int(row['Quantidade'])
                 })
             
             return {
                 "type": "bar",
                 "data": chart_data,
-                "x_axis": "Categoria",
+                "x_axis": str(category_col),
                 "y_axis": "Quantidade",
                 "title": f"Distribuição por {category_col}"
             }
@@ -3813,19 +3773,18 @@ def generate_chart_data(df: pd.DataFrame, question: str, metadata: Dict[str, Any
             chart_data = []
             for _, row in grouped.iterrows():
                 chart_data.append({
-                    "Categoria": str(row[category_col]),
-                    "Valor": float(row[value_col])
+                    str(category_col): str(row[category_col]),
+                    str(value_col): float(row[value_col])
                 })
             
             return {
                 "type": "bar",
                 "data": chart_data,
-                "x_axis": "Categoria",
-                "y_axis": "Valor",
+                "x_axis": str(category_col),
+                "y_axis": str(value_col),
                 "title": f"Ranking de {value_col} por {category_col}"
             }
         
-        print("[GRÁFICO DEBUG] Nenhum tipo de gráfico correspondeu aos critérios")
         return None
         
     except Exception as e:
