@@ -3679,15 +3679,21 @@ def generate_chart_data(df: pd.DataFrame, question: str, metadata: Dict[str, Any
             date_col = metadata['date_columns'][0]
             print(f"[GRÁFICO DEBUG] Coluna de data: {date_col}, tipo: {df[date_col].dtype}")
             
+            # Criar uma cópia do DataFrame para não modificar o original
+            df_copy = df.copy()
+            
             # Converter coluna de data para datetime se necessário
-            if df[date_col].dtype == 'object':
-                df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+            if df_copy[date_col].dtype == 'object':
+                df_copy[date_col] = pd.to_datetime(df_copy[date_col], errors='coerce')
+            
+            # Remover linhas com datas inválidas
+            df_copy = df_copy.dropna(subset=[date_col])
             
             # Extrair mês e ano para agrupamento mensal
-            df['month_year'] = df[date_col].dt.to_period('M').astype(str)
+            df_copy['month_year'] = df_copy[date_col].dt.to_period('M')
             
             # Agrupar por mês e somar valores
-            grouped = df.groupby('month_year')[value_col].sum().reset_index()
+            grouped = df_copy.groupby('month_year')[value_col].sum().reset_index()
             grouped = grouped.sort_values('month_year').head(20)  # Máximo 20 pontos
             
             print(f"[GRÁFICO DEBUG] Dados agrupados por mês: {len(grouped)} registros")
@@ -3695,16 +3701,27 @@ def generate_chart_data(df: pd.DataFrame, question: str, metadata: Dict[str, Any
             
             chart_data = []
             for _, row in grouped.iterrows():
+                # Converter period para string mais legível
+                month_str = str(row['month_year'])
+                try:
+                    # Tentar formatar como "Jan/2024"
+                    period = pd.Period(month_str)
+                    month_name = period.strftime('%b/%Y')
+                except:
+                    month_name = month_str
+                
                 chart_data.append({
-                    "month_year": str(row['month_year']),
-                    str(value_col): float(row[value_col])
+                    "Mês": month_name,
+                    "Valor": float(row[value_col])
                 })
+            
+            print(f"[GRÁFICO DEBUG] Chart data gerado: {chart_data}")
             
             return {
                 "type": "bar",  # Mudança: usar bar chart para comparação mensal
                 "data": chart_data,
                 "x_axis": "Mês",
-                "y_axis": str(value_col),
+                "y_axis": "Valor",
                 "title": f"Comparação Mensal de {value_col}"
             }
         
@@ -3719,15 +3736,15 @@ def generate_chart_data(df: pd.DataFrame, question: str, metadata: Dict[str, Any
             chart_data = []
             for _, row in grouped.iterrows():
                 chart_data.append({
-                    str(date_col): str(row[date_col]),
-                    str(value_col): float(row[value_col])
+                    "Data": str(row[date_col]),
+                    "Valor": float(row[value_col])
                 })
             
             return {
                 "type": "line",
                 "data": chart_data,
-                "x_axis": str(date_col),
-                "y_axis": str(value_col),
+                "x_axis": "Data",
+                "y_axis": "Valor",
                 "title": f"Evolução de {value_col}"
             }
         
@@ -3758,14 +3775,14 @@ def generate_chart_data(df: pd.DataFrame, question: str, metadata: Dict[str, Any
             chart_data = []
             for _, row in distribution.iterrows():
                 chart_data.append({
-                    str(category_col): str(row[category_col]),
-                    'Quantidade': int(row['Quantidade'])
+                    "Categoria": str(row[category_col]),
+                    "Quantidade": int(row['Quantidade'])
                 })
             
             return {
                 "type": "bar",
                 "data": chart_data,
-                "x_axis": str(category_col),
+                "x_axis": "Categoria",
                 "y_axis": "Quantidade",
                 "title": f"Distribuição por {category_col}"
             }
@@ -3796,15 +3813,15 @@ def generate_chart_data(df: pd.DataFrame, question: str, metadata: Dict[str, Any
             chart_data = []
             for _, row in grouped.iterrows():
                 chart_data.append({
-                    str(category_col): str(row[category_col]),
-                    str(value_col): float(row[value_col])
+                    "Categoria": str(row[category_col]),
+                    "Valor": float(row[value_col])
                 })
             
             return {
                 "type": "bar",
                 "data": chart_data,
-                "x_axis": str(category_col),
-                "y_axis": str(value_col),
+                "x_axis": "Categoria",
+                "y_axis": "Valor",
                 "title": f"Ranking de {value_col} por {category_col}"
             }
         
