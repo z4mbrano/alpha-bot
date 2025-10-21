@@ -280,7 +280,16 @@ ${periodSection}
         <div className="flex-1 grid place-items-center px-6 bg-[var(--bg-2)]">
           <div className="text-center max-w-xl">
             <h1 className="tracking-tight font-extralight" style={{fontSize: 'clamp(28px,4vw,40px)'}}>
-              <span style={{ color: 'var(--accent)' }}>Welcome to the {botName}</span>
+              <span 
+                style={{ 
+                  background: 'linear-gradient(135deg, var(--accent) 0%, #8b5cf6 50%, #06b6d4 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text'
+                }}
+              >
+                Bem-Vindo ao {botName}
+              </span>
               {/*<span style={{ color: 'var(--text)' }}>{botName}</span>*/}
             </h1>
             <div className="mt-8 bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 shadow-xl text-left">

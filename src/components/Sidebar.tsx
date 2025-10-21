@@ -79,11 +79,11 @@ export default function Sidebar() {
             {bots.map(b => {
               const isActive = active === b.id
               const iconClass = collapsed
-                ? `w-11 h-11 rounded-xl grid place-items-center transition-transform ${isActive ? 'bg-[var(--accent)] text-white ring-1 ring-[var(--accent)]/40' : 'bg-white/5 hover:bg-white/10 hover:scale-[1.02]'}`
-                : `w-8 h-8 rounded-md grid place-items-center ${isActive ? 'bg-white/10 text-[var(--text)]' : 'bg-white/5 text-[var(--muted)]'}`
+                ? `w-11 h-11 rounded-xl grid place-items-center transition-all ${isActive ? 'bg-[var(--accent)]/10 text-[var(--accent)] ring-1 ring-[var(--accent)]/20' : 'bg-white/5 hover:bg-white/10 hover:scale-[1.02] text-[var(--muted)]'}`
+                : `w-8 h-8 rounded-md grid place-items-center transition-all ${isActive ? 'bg-[var(--accent)]/10 text-[var(--accent)]' : 'bg-white/5 text-[var(--muted)] hover:text-[var(--text)]'}`
               const buttonClass = collapsed
                 ? 'pressable p-1 rounded-lg transition-fast focus:outline-none focus:ring-2 focus:ring-[var(--ring)] grid place-items-center'
-                : `pressable flex items-center gap-3 p-3 rounded-lg transition-fast focus:outline-none focus:ring-2 focus:ring-[var(--ring)] ${isActive ? 'bg-[var(--accent)] text-white' : 'hover:bg-white/5 text-[var(--text)]'}`
+                : `pressable flex items-center gap-3 p-3 rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-[var(--ring)] ${isActive ? 'bg-white/5 text-[var(--accent)]' : 'hover:bg-white/5 text-[var(--text)]'}`
               return (
                 <button
                   key={b.id}

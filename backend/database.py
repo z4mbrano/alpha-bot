@@ -18,16 +18,8 @@ if os.environ.get('RAILWAY_ENVIRONMENT'):
     data_dir = os.environ.get('RAILWAY_VOLUME_MOUNT_PATH', '/data')
     if not os.path.exists(data_dir):
         os.makedirs(data_dir, exist_ok=True)
-        print(f"⚠️ Railway: Diretório {data_dir} criado")
     DATABASE_PATH = os.path.join(data_dir, 'alphabot.db')
     print(f"🚂 Railway: Usando database em {DATABASE_PATH}")
-    
-    # 🔍 DEBUG: Verificar se o arquivo existe e permissões
-    if os.path.exists(DATABASE_PATH):
-        size = os.path.getsize(DATABASE_PATH)
-        print(f"✅ Database existe: {DATABASE_PATH} ({size} bytes)")
-    else:
-        print(f"⚠️ Database não existe ainda: {DATABASE_PATH}")
 elif os.environ.get('VERCEL'):
     # Vercel: usar /tmp (efêmero - apenas para testes)
     DATABASE_PATH = '/tmp/alphabot.db'
