@@ -3592,11 +3592,19 @@ def should_include_chart(question: str, df: pd.DataFrame, metadata: Dict[str, An
         'comparar', 'compare', 'distribuição', 'distribuicao',
         'gráfico', 'grafico', 'visualize', 'mostre', 'plot',
         'crescimento', 'queda', 'variação', 'variacao',
-        'temporal', 'mensal', 'anual', 'diário', 'diario'
+        'temporal', 'mensal', 'anual', 'diário', 'diario',
+        'cada mês', 'cada mes', 'por mês', 'por mes',
+        'fatura total', 'total por', 'vendas por', 'valores por',
+        'ranking', 'top', 'maiores', 'menores'
     ]
     
     question_lower = question.lower()
     has_keywords = any(keyword in question_lower for keyword in chart_keywords)
+    
+    # Debug: Log da detecção de keywords
+    if has_keywords:
+        matched_keywords = [k for k in chart_keywords if k in question_lower]
+        print(f"[GRÁFICO DEBUG] Keywords encontradas: {matched_keywords}")
     
     # Verificar se há colunas numéricas
     numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
@@ -3612,8 +3620,14 @@ def should_include_chart(question: str, df: pd.DataFrame, metadata: Dict[str, An
     ]
     has_categorical = len(categorical_cols) > 0
     
+    # Debug: Log das condições
+    print(f"[GRÁFICO DEBUG] has_keywords: {has_keywords}, has_numeric: {has_numeric}, has_date: {has_date}, has_categorical: {has_categorical}")
+    
     # Incluir gráfico se: tem keywords E tem dados numéricos E (tem temporal OU categórico)
-    return has_keywords and has_numeric and (has_date or has_categorical)
+    should_include = has_keywords and has_numeric and (has_date or has_categorical)
+    print(f"[GRÁFICO DEBUG] Resultado final: {should_include}")
+    
+    return should_include
 
 def generate_chart_data(df: pd.DataFrame, question: str, metadata: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
@@ -3630,29 +3644,72 @@ def generate_chart_data(df: pd.DataFrame, question: str, metadata: Dict[str, Any
     """
     try:
         question_lower = question.lower()
+        print(f"[GRÁFICO DEBUG] Analisando pergunta: '{question}'")
         
         # Detectar tipo de análise baseado na pergunta
         is_temporal = any(word in question_lower for word in ['evolução', 'evolucao', 'tendência', 'tendencia', 'ao longo', 'temporal', 'mensal', 'anual', 'diário', 'diario'])
+        is_monthly_comparison = any(word in question_lower for word in ['cada mês', 'cada mes', 'por mês', 'por mes', 'fatura total', 'total de cada', 'compare'])
         is_distribution = any(word in question_lower for word in ['distribuição', 'distribuicao', 'divisão', 'divisao', 'proporção', 'proporcao', 'percentual'])
         is_ranking = any(word in question_lower for word in ['ranking', 'top', 'maiores', 'menores', 'melhores', 'piores'])
         is_comparison = any(word in question_lower for word in ['comparar', 'compare', 'comparação', 'comparacao', 'versus', 'vs', 'entre'])
         
+        print(f"[GRÁFICO DEBUG] Tipos detectados - temporal: {is_temporal}, monthly_comparison: {is_monthly_comparison}, distribution: {is_distribution}, ranking: {is_ranking}, comparison: {is_comparison}")
+        
         # Colunas numéricas disponíveis
         numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
         if not numeric_cols:
+            print("[GRÁFICO DEBUG] Nenhuma coluna numérica encontrada")
             return None
         
         # Escolher coluna numérica mais relevante
-        # Priorizar colunas com "valor", "total", "vendas", "quantidade"
+        # Priorizar colunas com "valor", "total", "vendas", "quantidade", "fatura"
         value_col = numeric_cols[0]
         for col in numeric_cols:
             col_lower = col.lower()
-            if any(keyword in col_lower for keyword in ['valor', 'total', 'vendas', 'venda', 'quantidade', 'qtd', 'receita']):
+            if any(keyword in col_lower for keyword in ['valor', 'total', 'vendas', 'venda', 'quantidade', 'qtd', 'receita', 'fatura']):
                 value_col = col
                 break
         
+        print(f"[GRÁFICO DEBUG] Coluna de valor selecionada: {value_col}")
+        print(f"[GRÁFICO DEBUG] Colunas de data disponíveis: {metadata.get('date_columns', [])}")
+        
+        # GRÁFICO TEMPORAL MENSAL - Para perguntas sobre comparação mensal ou temporal
+        if (is_temporal or is_monthly_comparison) and metadata.get('date_columns'):
+            print(f"[GRÁFICO DEBUG] Gerando gráfico temporal mensal. is_temporal: {is_temporal}, is_monthly_comparison: {is_monthly_comparison}")
+            date_col = metadata['date_columns'][0]
+            print(f"[GRÁFICO DEBUG] Coluna de data: {date_col}, tipo: {df[date_col].dtype}")
+            
+            # Converter coluna de data para datetime se necessário
+            if df[date_col].dtype == 'object':
+                df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+            
+            # Extrair mês e ano para agrupamento mensal
+            df['month_year'] = df[date_col].dt.to_period('M').astype(str)
+            
+            # Agrupar por mês e somar valores
+            grouped = df.groupby('month_year')[value_col].sum().reset_index()
+            grouped = grouped.sort_values('month_year').head(20)  # Máximo 20 pontos
+            
+            print(f"[GRÁFICO DEBUG] Dados agrupados por mês: {len(grouped)} registros")
+            print(f"[GRÁFICO DEBUG] Amostra dos dados: {grouped.head()}")
+            
+            chart_data = []
+            for _, row in grouped.iterrows():
+                chart_data.append({
+                    "month_year": str(row['month_year']),
+                    str(value_col): float(row[value_col])
+                })
+            
+            return {
+                "type": "bar",  # Mudança: usar bar chart para comparação mensal
+                "data": chart_data,
+                "x_axis": "Mês",
+                "y_axis": str(value_col),
+                "title": f"Comparação Mensal de {value_col}"
+            }
+        
         # GRÁFICO TEMPORAL (LineChart) - Evolução ao longo do tempo
-        if is_temporal and metadata.get('date_columns'):
+        elif is_temporal and metadata.get('date_columns'):
             date_col = metadata['date_columns'][0]
             
             # Agrupar por data e somar valores
@@ -3751,6 +3808,7 @@ def generate_chart_data(df: pd.DataFrame, question: str, metadata: Dict[str, Any
                 "title": f"Ranking de {value_col} por {category_col}"
             }
         
+        print("[GRÁFICO DEBUG] Nenhum tipo de gráfico correspondeu aos critérios")
         return None
         
     except Exception as e:
