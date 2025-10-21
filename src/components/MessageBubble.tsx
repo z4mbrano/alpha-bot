@@ -142,6 +142,34 @@ export default function MessageBubble({ m, onSendMessage }: { m: Message; onSend
             <ChartRenderer chart={m.chart} />
           </div>
         )}
+
+        {/* Arquivos analisados - AlphaBot */}
+        {!isUser && m.botId === 'alphabot' && m.metadata?.files_used && m.metadata.files_used.length > 0 && (
+          <div className="mt-4 p-3 bg-[var(--surface)]/30 rounded-lg border border-[var(--border)]">
+            <div className="flex items-center gap-2 text-xs text-[var(--muted)] mb-2">
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 01-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1 1 0 111.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 111.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
+              </svg>
+              <span>Arquivos analisados ({m.metadata.total_files || m.metadata.files_used.length}):</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {m.metadata.files_used.map((file: string, index: number) => (
+                <span
+                  key={index}
+                  className="text-xs px-2 py-1 rounded bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20"
+                >
+                  {file}
+                </span>
+              ))}
+            </div>
+            <div className="mt-2 text-xs text-[var(--muted)]">
+              {m.metadata.records_analyzed} registros • {m.metadata.columns_available} colunas
+              {m.metadata.date_columns && m.metadata.date_columns.length > 0 && (
+                <span> • {m.metadata.date_columns.length} coluna(s) temporal(is)</span>
+              )}
+            </div>
+          </div>
+        )}
         </div>
         
         {/* Botões de ação - apenas para mensagens do bot */}

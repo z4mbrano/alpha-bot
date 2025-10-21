@@ -3964,7 +3964,10 @@ Apresente APENAS a resposta final do Júri ao usuário.
             "suggestions": suggestions,
             "metadata": {
                 "records_analyzed": len(df),
-                "columns_available": len(df.columns)
+                "columns_available": len(df.columns),
+                "files_used": metadata.get('files_success', []),
+                "date_columns": metadata.get('date_columns', []),
+                "total_files": len(metadata.get('files_success', []))
             }
         }
         

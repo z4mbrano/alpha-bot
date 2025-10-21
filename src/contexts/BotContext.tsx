@@ -69,6 +69,13 @@ export type Message = {
   sessionId?: string  // 🚀 SPRINT 2: ID da sessão do AlphaBot (para exportar dados)
   conversationId?: string  // 🚀 SPRINT 2: ID da conversa do DriveBot (para exportar dados)
   chart?: ChartData  // 🚀 SPRINT 2: Dados para gráfico automático
+  metadata?: {  // 🚀 Metadados da análise (arquivos, registros, etc.)
+    files_used?: string[]
+    records_analyzed?: number
+    columns_available?: number
+    date_columns?: string[]
+    total_files?: number
+  }
 }
 
 const initialMessages: Record<BotId, Message[]> = {
@@ -323,7 +330,8 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
           time: Date.now(),
           suggestions: data.suggestions || [],  // 🚀 Sugestões de perguntas
           sessionId: data.session_id,  // 🚀 SPRINT 2: ID da sessão para exportar
-          chart: data.chart  // 🚀 SPRINT 2: Gráfico automático
+          chart: data.chart,  // 🚀 SPRINT 2: Gráfico automático
+          metadata: data.metadata  // 🚀 Metadados da análise (arquivos, registros, etc.)
         }
         setStore((s) => ({ ...s, [active]: [...s[active], botMsg] }))
         
