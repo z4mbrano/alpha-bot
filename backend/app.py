@@ -50,14 +50,14 @@ CACHE_STATS = {
     'expired': 0
 }
 
-def generate_cache_key(session_id: str, question: str, user_id: Optional[int] = None) -> str:
-    """Gera chave única para cache baseada em user_id + session_id + question"""
-    combined = f"{user_id}:{session_id}:{question.lower().strip()}" if user_id else f"{session_id}:{question.lower().strip()}"
+def generate_cache_key(session_id: str, question: str) -> str:
+    """Gera chave única para cache baseada em session_id + question"""
+    combined = f"{session_id}:{question.lower().strip()}"
     return hashlib.md5(combined.encode()).hexdigest()
 
-def get_cached_response(session_id: str, question: str, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+def get_cached_response(session_id: str, question: str) -> Optional[Dict[str, Any]]:
     """Busca resposta no cache se ainda válida"""
-    cache_key = generate_cache_key(session_id, question, user_id)
+    cache_key = generate_cache_key(session_id, question)
     
     if cache_key in RESPONSE_CACHE:
         cached = RESPONSE_CACHE[cache_key]
@@ -76,9 +76,9 @@ def get_cached_response(session_id: str, question: str, user_id: Optional[int] =
     print(f"[CACHE MISS] ❌ Resposta não encontrada no cache para: {question[:50]}...")
     return None
 
-def set_cached_response(session_id: str, question: str, response: Dict[str, Any], user_id: Optional[int] = None) -> None:
+def set_cached_response(session_id: str, question: str, response: Dict[str, Any]) -> None:
     """Armazena resposta no cache com TTL"""
-    cache_key = generate_cache_key(session_id, question, user_id)
+    cache_key = generate_cache_key(session_id, question)
     expires_at = datetime.now() + timedelta(seconds=CACHE_TTL_SECONDS)
     
     RESPONSE_CACHE[cache_key] = {
@@ -157,9 +157,8 @@ EXCEL_MIME_TYPES = {
     'application/vnd.ms-excel',
 }
 
-# Armazenamento simples em memória para conversas com isolamento por usuário
+# Armazenamento simples em memória para conversas
 MAX_HISTORY_MESSAGES = 12
-# Chave: f"{user_id}_{conversation_id}" para evitar mixing de dados entre usuários
 CONVERSATION_STORE: Dict[str, Dict[str, Any]] = {}
 
 # Prompts do sistema para cada bot
@@ -2064,15 +2063,11 @@ def ingest_drive_folder(drive_id: str) -> Dict[str, Any]:
     }
 
 
-def ensure_conversation(conversation_id: str, bot_id: str, user_id: Optional[int] = None) -> Dict[str, Any]:
-    # Criar chave composta para isolamento por usuário
-    store_key = f"{user_id}_{conversation_id}" if user_id else conversation_id
-    
-    conversation = CONVERSATION_STORE.get(store_key)
+def ensure_conversation(conversation_id: str, bot_id: str) -> Dict[str, Any]:
+    conversation = CONVERSATION_STORE.get(conversation_id)
     if conversation is None or conversation.get("bot_id") != bot_id:
         conversation = {
             "bot_id": bot_id,
-            "user_id": user_id,
             "messages": deque(maxlen=MAX_HISTORY_MESSAGES),
             "drive": {
                 "drive_id": None,
@@ -2084,7 +2079,7 @@ def ensure_conversation(conversation_id: str, bot_id: str, user_id: Optional[int
                 "last_refresh": None,
             },
         }
-        CONVERSATION_STORE[store_key] = conversation
+        CONVERSATION_STORE[conversation_id] = conversation
     return conversation
 
 
@@ -2933,7 +2928,7 @@ def get_bot_response(bot_id: str, message: str, conversation_id: Optional[str] =
         else:
             return {"error": "Bot ID inválido", "conversation_id": conversation_id}
 
-        conversation = ensure_conversation(conversation_id, bot_id, user_id)
+        conversation = ensure_conversation(conversation_id, bot_id)
         append_message(conversation, "user", message)
 
         if not api_key:
@@ -4255,7 +4250,7 @@ def chat():
                 print(f"⚠️ Erro ao salvar mensagem do usuário: {db_error}")
             
         # Gerar resposta do bot
-        result = get_bot_response(bot_id, message, conversation_id, user_id)
+        result = get_bot_response(bot_id, message, conversation_id)
         
         if "error" in result:
             return jsonify(result), 500
