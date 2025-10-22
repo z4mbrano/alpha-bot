@@ -11,7 +11,6 @@ import secrets
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 import json
-from werkzeug.security import generate_password_hash, check_password_hash
 
 # Detectar ambiente e usar caminho apropriado
 if os.environ.get('RAILWAY_ENVIRONMENT'):
@@ -95,8 +94,8 @@ def init_database():
 # ========================================
 
 def hash_password(password: str) -> str:
-    """Gera hash seguro da senha usando werkzeug com sal."""
-    return generate_password_hash(password)
+    """Gera hash SHA-256 da senha."""
+    return hashlib.sha256(password.encode()).hexdigest()
 
 
 def create_user(username: str, password: str) -> Optional[Dict[str, Any]]:
@@ -131,52 +130,26 @@ def create_user(username: str, password: str) -> Optional[Dict[str, Any]]:
 def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
     """
     Autentica usuário verificando senha.
-    Suporta tanto hashes antigos (SHA-256) quanto novos (werkzeug).
     Retorna: dict com dados do usuário, ou None se credenciais inválidas.
     """
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Primeiro, buscar o usuário pelo username
+    password_hash = hash_password(password)
     cursor.execute(
-        'SELECT id, username, password_hash, created_at FROM users WHERE username = ?',
-        (username,)
+        'SELECT id, username, created_at FROM users WHERE username = ? AND password_hash = ?',
+        (username, password_hash)
     )
     
     row = cursor.fetchone()
+    conn.close()
     
     if row:
-        password_hash = row['password_hash']
-        
-        # Tentar primeiro com novo sistema (werkzeug)
-        if check_password_hash(password_hash, password):
-            conn.close()
-            return {
-                'id': row['id'],
-                'username': row['username'],
-                'created_at': row['created_at']
-            }
-        
-        # FALLBACK: Compatibilidade com sistema antigo (SHA-256)
-        old_hash = hashlib.sha256(password.encode()).hexdigest()  
-        if password_hash == old_hash:
-            # Senha correta com sistema antigo - migrar para novo sistema
-            print(f"🔄 Migrando senha do usuário {username} para sistema seguro")
-            new_hash = generate_password_hash(password)
-            cursor.execute(
-                'UPDATE users SET password_hash = ? WHERE id = ?',
-                (new_hash, row['id'])
-            )
-            conn.commit()
-            conn.close()
-            
-            return {
-                'id': row['id'],
-                'username': row['username'],
-                'created_at': row['created_at']
-            }
-    
-    conn.close()
+        return {
+            'id': row['id'],
+            'username': row['username'],
+            'created_at': row['created_at']
+        }
     return None
 
 
