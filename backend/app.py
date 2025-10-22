@@ -3217,6 +3217,10 @@ def alphabot_upload():
         user_id = request.form.get('user_id')
         conversation_id = request.form.get('conversation_id')
         
+        # DEBUG: Log para verificar parâmetros recebidos
+        print(f"[AlphaBot Upload] user_id: {user_id}, conversation_id: {conversation_id}")
+        print(f"[AlphaBot Upload] form_data keys: {list(request.form.keys())}")
+        
         if not files or len(files) == 0:
             return jsonify({
                 "status": "error",
@@ -3352,6 +3356,9 @@ def alphabot_upload():
         
         # Criar chave composta para isolamento por usuário
         session_key = f"{user_id}_{session_id}" if user_id else session_id
+        
+        # DEBUG: Log da criação da sessão
+        print(f"[AlphaBot Upload] Criando sessão com chave: {session_key}")
         
         # CORREÇÃO: Armazenar DataFrame usando date_format='iso' para evitar FutureWarning
         ALPHABOT_SESSIONS[session_key] = {
@@ -3827,11 +3834,21 @@ def alphabot_chat():
         # Criar chave composta para buscar sessão isolada por usuário
         session_key = f"{user_id}_{session_id}" if user_id else session_id
         
+        # DEBUG: Log para identificar problema de sessão
+        print(f"[AlphaBot Chat] user_id: {user_id}, session_id: {session_id}")
+        print(f"[AlphaBot Chat] session_key construída: {session_key}")
+        print(f"[AlphaBot Chat] Sessions disponíveis: {list(ALPHABOT_SESSIONS.keys())}")
+        
         # Verificar se a sessão existe
         if session_key not in ALPHABOT_SESSIONS:
             return jsonify({
-                "error": "Sessão não encontrada. Por favor, faça upload dos arquivos primeiro.",
-                "session_id": session_id
+                "error": f"Sessão não encontrada. Chave procurada: {session_key}. Por favor, faça upload dos arquivos primeiro.",
+                "session_id": session_id,
+                "debug_info": {
+                    "session_key_used": session_key,
+                    "available_sessions": list(ALPHABOT_SESSIONS.keys()),
+                    "user_id": user_id
+                }
             }), 404
         
         # CORREÇÃO: Recuperar dados da sessão usando StringIO para evitar FutureWarning
