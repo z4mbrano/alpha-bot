@@ -50,14 +50,14 @@ CACHE_STATS = {
     'expired': 0
 }
 
-def generate_cache_key(session_id: str, question: str) -> str:
-    """Gera chave única para cache baseada em session_id + question"""
-    combined = f"{session_id}:{question.lower().strip()}"
+def generate_cache_key(session_id: str, question: str, user_id: Optional[int] = None) -> str:
+    """Gera chave única para cache baseada em user_id + session_id + question"""
+    combined = f"{user_id}:{session_id}:{question.lower().strip()}" if user_id else f"{session_id}:{question.lower().strip()}"
     return hashlib.md5(combined.encode()).hexdigest()
 
-def get_cached_response(session_id: str, question: str) -> Optional[Dict[str, Any]]:
+def get_cached_response(session_id: str, question: str, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
     """Busca resposta no cache se ainda válida"""
-    cache_key = generate_cache_key(session_id, question)
+    cache_key = generate_cache_key(session_id, question, user_id)
     
     if cache_key in RESPONSE_CACHE:
         cached = RESPONSE_CACHE[cache_key]
@@ -76,9 +76,9 @@ def get_cached_response(session_id: str, question: str) -> Optional[Dict[str, An
     print(f"[CACHE MISS] ❌ Resposta não encontrada no cache para: {question[:50]}...")
     return None
 
-def set_cached_response(session_id: str, question: str, response: Dict[str, Any]) -> None:
+def set_cached_response(session_id: str, question: str, response: Dict[str, Any], user_id: Optional[int] = None) -> None:
     """Armazena resposta no cache com TTL"""
-    cache_key = generate_cache_key(session_id, question)
+    cache_key = generate_cache_key(session_id, question, user_id)
     expires_at = datetime.now() + timedelta(seconds=CACHE_TTL_SECONDS)
     
     RESPONSE_CACHE[cache_key] = {
@@ -157,8 +157,9 @@ EXCEL_MIME_TYPES = {
     'application/vnd.ms-excel',
 }
 
-# Armazenamento simples em memória para conversas
+# Armazenamento simples em memória para conversas com isolamento por usuário
 MAX_HISTORY_MESSAGES = 12
+# Chave: f"{user_id}_{conversation_id}" para evitar mixing de dados entre usuários
 CONVERSATION_STORE: Dict[str, Dict[str, Any]] = {}
 
 # Prompts do sistema para cada bot
@@ -1487,7 +1488,8 @@ A resposta entregue ao usuário (formulada pelo Júri) deve SEMPRE seguir esta e
 - **Foco no Anexo:** Se o usuário fizer uma pergunta sobre dados sem ter anexado arquivos primeiro, lembre-o gentilmente de que você precisa de um anexo para começar a análise.
 """
 
-# Armazenamento global para sessões do AlphaBot
+# Armazenamento global para sessões do AlphaBot com isolamento por usuário
+# Chave: f"{user_id}_{session_id}" para evitar mixing de dados
 ALPHABOT_SESSIONS: Dict[str, Dict[str, Any]] = {}
 
 
@@ -2062,11 +2064,15 @@ def ingest_drive_folder(drive_id: str) -> Dict[str, Any]:
     }
 
 
-def ensure_conversation(conversation_id: str, bot_id: str) -> Dict[str, Any]:
-    conversation = CONVERSATION_STORE.get(conversation_id)
+def ensure_conversation(conversation_id: str, bot_id: str, user_id: Optional[int] = None) -> Dict[str, Any]:
+    # Criar chave composta para isolamento por usuário
+    store_key = f"{user_id}_{conversation_id}" if user_id else conversation_id
+    
+    conversation = CONVERSATION_STORE.get(store_key)
     if conversation is None or conversation.get("bot_id") != bot_id:
         conversation = {
             "bot_id": bot_id,
+            "user_id": user_id,
             "messages": deque(maxlen=MAX_HISTORY_MESSAGES),
             "drive": {
                 "drive_id": None,
@@ -2078,7 +2084,7 @@ def ensure_conversation(conversation_id: str, bot_id: str) -> Dict[str, Any]:
                 "last_refresh": None,
             },
         }
-        CONVERSATION_STORE[conversation_id] = conversation
+        CONVERSATION_STORE[store_key] = conversation
     return conversation
 
 
@@ -2912,7 +2918,7 @@ Pode me dar mais detalhes sobre o que você gostaria de saber? Ou prefere que eu
     
     return formatted_response
 
-def get_bot_response(bot_id: str, message: str, conversation_id: Optional[str] = None) -> Dict[str, Any]:
+def get_bot_response(bot_id: str, message: str, conversation_id: Optional[str] = None, user_id: Optional[int] = None) -> Dict[str, Any]:
     """Gera resposta usando Google AI para o bot específico com memória de conversa simples."""
     try:
         if conversation_id is None or not isinstance(conversation_id, str) or not conversation_id.strip():
@@ -2927,7 +2933,7 @@ def get_bot_response(bot_id: str, message: str, conversation_id: Optional[str] =
         else:
             return {"error": "Bot ID inválido", "conversation_id": conversation_id}
 
-        conversation = ensure_conversation(conversation_id, bot_id)
+        conversation = ensure_conversation(conversation_id, bot_id, user_id)
         append_message(conversation, "user", message)
 
         if not api_key:
@@ -3207,6 +3213,10 @@ def alphabot_upload():
         
         files = request.files.getlist('files')
         
+        # Obter user_id e conversation_id dos parâmetros da requisição
+        user_id = request.form.get('user_id')
+        conversation_id = request.form.get('conversation_id')
+        
         if not files or len(files) == 0:
             return jsonify({
                 "status": "error",
@@ -3340,8 +3350,11 @@ def alphabot_upload():
         # Gerar ID de sessão único
         session_id = str(uuid.uuid4())
         
+        # Criar chave composta para isolamento por usuário
+        session_key = f"{user_id}_{session_id}" if user_id else session_id
+        
         # CORREÇÃO: Armazenar DataFrame usando date_format='iso' para evitar FutureWarning
-        ALPHABOT_SESSIONS[session_id] = {
+        ALPHABOT_SESSIONS[session_key] = {
             "dataframe": consolidated_df.to_json(orient='split', date_format='iso'),
             "metadata": {
                 "total_records": len(consolidated_df),
@@ -3793,7 +3806,7 @@ def alphabot_chat():
                 print(f"⚠️ Erro ao salvar mensagem do usuário: {db_error}")
         
         # 🚀 VERIFICAR CACHE PRIMEIRO (SPRINT 1)
-        cached_response = get_cached_response(session_id, message)
+        cached_response = get_cached_response(session_id, message, user_id)
         if cached_response:
             # 🆕 Salvar resposta em cache no banco também
             if conversation_id and user_id:
@@ -3811,15 +3824,18 @@ def alphabot_chat():
             
             return jsonify(cached_response)
         
+        # Criar chave composta para buscar sessão isolada por usuário
+        session_key = f"{user_id}_{session_id}" if user_id else session_id
+        
         # Verificar se a sessão existe
-        if session_id not in ALPHABOT_SESSIONS:
+        if session_key not in ALPHABOT_SESSIONS:
             return jsonify({
                 "error": "Sessão não encontrada. Por favor, faça upload dos arquivos primeiro.",
                 "session_id": session_id
             }), 404
         
         # CORREÇÃO: Recuperar dados da sessão usando StringIO para evitar FutureWarning
-        session_data = ALPHABOT_SESSIONS[session_id]
+        session_data = ALPHABOT_SESSIONS[session_key]
         df = pd.read_json(io.StringIO(session_data["dataframe"]), orient='split')
         metadata = session_data["metadata"]
         
@@ -3918,7 +3934,7 @@ Apresente APENAS a resposta final do Júri ao usuário.
             response_data["chart"] = chart_data
         
         # 🚀 ARMAZENAR NO CACHE (SPRINT 1)
-        set_cached_response(session_id, message, response_data)
+        set_cached_response(session_id, message, response_data, user_id)
         
         # 🆕 MULTI-USUÁRIO: Salvar resposta do bot no banco
         if conversation_id and user_id:
@@ -3954,12 +3970,16 @@ def alphabot_export():
     try:
         data = request.get_json()
         session_id = data.get('session_id')
+        user_id = data.get('user_id')
         
         if not session_id:
             return jsonify({"error": "session_id é obrigatório"}), 400
         
+        # Criar chave composta para buscar sessão isolada por usuário
+        session_key = f"{user_id}_{session_id}" if user_id else session_id
+        
         # Buscar DataFrame da sessão (usar ALPHABOT_SESSIONS em maiúsculo)
-        session_data = ALPHABOT_SESSIONS.get(session_id)
+        session_data = ALPHABOT_SESSIONS.get(session_key)
         
         if not session_data:
             return jsonify({"error": "Sessão não encontrada ou expirou"}), 404
@@ -4164,7 +4184,7 @@ def chat():
                 print(f"⚠️ Erro ao salvar mensagem do usuário: {db_error}")
             
         # Gerar resposta do bot
-        result = get_bot_response(bot_id, message, conversation_id)
+        result = get_bot_response(bot_id, message, conversation_id, user_id)
         
         if "error" in result:
             return jsonify(result), 500
