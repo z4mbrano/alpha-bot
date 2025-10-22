@@ -3843,7 +3843,7 @@ def alphabot_chat():
                 print(f"⚠️ Erro ao salvar mensagem do usuário: {db_error}")
         
         # 🚀 VERIFICAR CACHE PRIMEIRO (SPRINT 1)
-        cached_response = get_cached_response(session_id, message, user_id)
+        cached_response = get_cached_response(session_id, message)
         if cached_response:
             # 🆕 Salvar resposta em cache no banco também
             if conversation_id and user_id:
@@ -4000,7 +4000,7 @@ Apresente APENAS a resposta final do Júri ao usuário.
             response_data["chart"] = chart_data
         
         # 🚀 ARMAZENAR NO CACHE (SPRINT 1)
-        set_cached_response(session_id, message, response_data, user_id)
+        set_cached_response(session_id, message, response_data)
         
         # 🆕 MULTI-USUÁRIO: Salvar resposta do bot no banco
         if conversation_id and user_id:
