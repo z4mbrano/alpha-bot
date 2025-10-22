@@ -3318,8 +3318,16 @@ def alphabot_upload():
                 "files_failed": files_failed
             }), 400
         
+        # DEBUG: Log detalhado dos DataFrames antes da consolidação
+        total_rows_before = sum(len(df) for df in dataframes)
+        print(f"[AlphaBot] 📊 {len(dataframes)} DataFrames lidos:")
+        for i, df in enumerate(dataframes):
+            print(f"[AlphaBot] - DataFrame {i+1}: {len(df)} linhas, {len(df.columns)} colunas")
+        print(f"[AlphaBot] Total de linhas antes da consolidação: {total_rows_before}")
+        
         # Consolidar todos os DataFrames
         consolidated_df = pd.concat(dataframes, ignore_index=True)
+        print(f"[AlphaBot] ✅ Consolidação concluída: {len(consolidated_df)} linhas, {len(consolidated_df.columns)} colunas")
         
         # CORREÇÃO #1: Remover duplicatas para evitar contagem dupla de transações
         initial_count = len(consolidated_df)
@@ -3327,6 +3335,7 @@ def alphabot_upload():
         duplicates_removed = initial_count - len(consolidated_df)
         if duplicates_removed > 0:
             print(f"[AlphaBot] ⚠️ Removidas {duplicates_removed} linhas duplicadas")
+        print(f"[AlphaBot] ✅ DataFrame final: {len(consolidated_df)} linhas após remoção de duplicatas")
         
         # Pré-processamento: Detectar e processar colunas de data
         date_columns_found = []
@@ -3347,30 +3356,56 @@ def alphabot_upload():
                 except Exception as e:
                     print(f"[AlphaBot] Falha ao processar coluna de data '{col}': {e}")
         
+        # CORREÇÃO #2: Processar colunas numéricas (especialmente valores monetários)
+        for col in consolidated_df.columns:
+            if any(term in col.lower() for term in ['receita', 'valor', 'total', 'faturamento', 'vendas', 'preco', 'preço']):
+                try:
+                    # Converter para string primeiro, depois limpar formatação
+                    consolidated_df[col] = consolidated_df[col].astype(str)
+                    # Remover símbolos de moeda e separadores de milhares
+                    consolidated_df[col] = consolidated_df[col].str.replace(r'[R$\s]', '', regex=True)
+                    # Trocar vírgula por ponto para decimais (padrão brasileiro)
+                    consolidated_df[col] = consolidated_df[col].str.replace(',', '.')
+                    # Converter para numérico
+                    consolidated_df[col] = pd.to_numeric(consolidated_df[col], errors='coerce')
+                    print(f"[AlphaBot] ✅ Coluna numérica '{col}' processada. Soma total: {consolidated_df[col].sum():.2f}")
+                except Exception as e:
+                    print(f"[AlphaBot] ⚠️ Erro ao processar coluna numérica '{col}': {e}")
+        
         # Remover linhas onde TODAS as colunas de data são NaT (se houver colunas de data)
         if date_columns_found:
             consolidated_df = consolidated_df.dropna(subset=date_columns_found, how='all')
         
-        # Gerar ID de sessão único
-        session_id = str(uuid.uuid4())
+        # Preparar metadata
+        metadata = {
+            "total_records": len(consolidated_df),
+            "total_columns": len(consolidated_df.columns),
+            "columns": list(consolidated_df.columns),
+            "date_columns": date_columns_found,
+            "files_success": files_success,
+            "files_failed": files_failed
+        }
         
-        # Criar chave composta para isolamento por usuário
+        # CORREÇÃO: Serializar DataFrame para JSON
+        dataframe_json = consolidated_df.to_json(orient='split', date_format='iso')
+        
+        if user_id:
+            # NOVA FUNCIONALIDADE: Salvar dados no banco de dados (persistente)
+            success = database.save_alphabot_data(int(user_id), dataframe_json, metadata)
+            if success:
+                print(f"[AlphaBot Upload] ✅ Dados salvos no banco para usuário {user_id}")
+            else:
+                print(f"[AlphaBot Upload] ⚠️ Falha ao salvar no banco para usuário {user_id}")
+        
+        # FALLBACK: Manter sistema de sessões em memória para compatibilidade/usuários não autenticados
+        session_id = str(uuid.uuid4())
         session_key = f"{user_id}_{session_id}" if user_id else session_id
         
-        # DEBUG: Log da criação da sessão
-        print(f"[AlphaBot Upload] Criando sessão com chave: {session_key}")
+        print(f"[AlphaBot Upload] Criando sessão fallback com chave: {session_key}")
         
-        # CORREÇÃO: Armazenar DataFrame usando date_format='iso' para evitar FutureWarning
         ALPHABOT_SESSIONS[session_key] = {
-            "dataframe": consolidated_df.to_json(orient='split', date_format='iso'),
-            "metadata": {
-                "total_records": len(consolidated_df),
-                "total_columns": len(consolidated_df.columns),
-                "columns": list(consolidated_df.columns),
-                "date_columns": date_columns_found,
-                "files_success": files_success,
-                "files_failed": files_failed
-            }
+            "dataframe": dataframe_json,
+            "metadata": metadata
         }
         
         # Calcular período se houver colunas de data
@@ -3831,30 +3866,49 @@ def alphabot_chat():
             
             return jsonify(cached_response)
         
-        # Criar chave composta para buscar sessão isolada por usuário
-        session_key = f"{user_id}_{session_id}" if user_id else session_id
+        # NOVA FUNCIONALIDADE: Carregar dados do banco primeiro (persistente)
+        df = None
+        metadata = None
         
-        # DEBUG: Log para identificar problema de sessão
-        print(f"[AlphaBot Chat] user_id: {user_id}, session_id: {session_id}")
-        print(f"[AlphaBot Chat] session_key construída: {session_key}")
-        print(f"[AlphaBot Chat] Sessions disponíveis: {list(ALPHABOT_SESSIONS.keys())}")
+        if user_id:
+            print(f"[AlphaBot Chat] Tentando carregar dados do banco para usuário {user_id}")
+            alphabot_data = database.load_alphabot_data(int(user_id))
+            
+            if alphabot_data:
+                try:
+                    df = pd.read_json(io.StringIO(alphabot_data["dataframe"]), orient='split')
+                    metadata = alphabot_data["metadata"]
+                    print(f"[AlphaBot Chat] ✅ Dados carregados do banco: {len(df)} linhas")
+                except Exception as e:
+                    print(f"[AlphaBot Chat] ❌ Erro ao deserializar dados do banco: {e}")
         
-        # Verificar se a sessão existe
-        if session_key not in ALPHABOT_SESSIONS:
-            return jsonify({
-                "error": f"Sessão não encontrada. Chave procurada: {session_key}. Por favor, faça upload dos arquivos primeiro.",
-                "session_id": session_id,
-                "debug_info": {
-                    "session_key_used": session_key,
-                    "available_sessions": list(ALPHABOT_SESSIONS.keys()),
-                    "user_id": user_id
-                }
-            }), 404
-        
-        # CORREÇÃO: Recuperar dados da sessão usando StringIO para evitar FutureWarning
-        session_data = ALPHABOT_SESSIONS[session_key]
-        df = pd.read_json(io.StringIO(session_data["dataframe"]), orient='split')
-        metadata = session_data["metadata"]
+        # FALLBACK: Tentar sistema de sessões em memória se não carregou do banco
+        if df is None:
+            print(f"[AlphaBot Chat] Tentando carregar dados da sessão em memória")
+            
+            session_key = f"{user_id}_{session_id}" if user_id else session_id
+            
+            print(f"[AlphaBot Chat] user_id: {user_id}, session_id: {session_id}")
+            print(f"[AlphaBot Chat] session_key construída: {session_key}")
+            print(f"[AlphaBot Chat] Sessions disponíveis: {list(ALPHABOT_SESSIONS.keys())}")
+            
+            if session_key not in ALPHABOT_SESSIONS:
+                return jsonify({
+                    "error": f"Nenhum dado encontrado para análise. Por favor, faça upload dos arquivos primeiro.",
+                    "session_id": session_id,
+                    "debug_info": {
+                        "session_key_used": session_key,
+                        "available_sessions": list(ALPHABOT_SESSIONS.keys()),
+                        "user_id": user_id,
+                        "tried_database": bool(user_id)
+                    }
+                }), 404
+            
+            # Carregar da sessão em memória
+            session_data = ALPHABOT_SESSIONS[session_key]
+            df = pd.read_json(io.StringIO(session_data["dataframe"]), orient='split')
+            metadata = session_data["metadata"]
+            print(f"[AlphaBot Chat] ✅ Dados carregados da sessão: {len(df)} linhas")
         
         # Preparar contexto dos dados para o LLM
         data_context = f"""
@@ -4222,6 +4276,30 @@ def chat():
             
         return jsonify(result)
         
+    except Exception as e:
+        return jsonify({"error": f"Erro interno: {str(e)}"}), 500
+
+
+@app.route('/api/alphabot/clear-data', methods=['POST'])
+def alphabot_clear_data():
+    """Limpa dados persistidos do AlphaBot para o usuário logado"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        
+        if not user_id:
+            return jsonify({"error": "user_id é obrigatório"}), 400
+        
+        success = database.clear_alphabot_data(int(user_id))
+        
+        if success:
+            return jsonify({
+                "success": True,
+                "message": "Dados do AlphaBot removidos com sucesso"
+            }), 200
+        else:
+            return jsonify({"error": "Falha ao remover dados"}), 500
+            
     except Exception as e:
         return jsonify({"error": f"Erro interno: {str(e)}"}), 500
 

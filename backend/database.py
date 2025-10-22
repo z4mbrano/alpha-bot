@@ -11,6 +11,7 @@ import secrets
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 import json
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # Detectar ambiente e usar caminho apropriado
 if os.environ.get('RAILWAY_ENVIRONMENT'):
@@ -48,6 +49,7 @@ def init_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
+            alphabot_data_json TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -93,8 +95,8 @@ def init_database():
 # ========================================
 
 def hash_password(password: str) -> str:
-    """Gera hash SHA-256 da senha."""
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Gera hash seguro da senha usando werkzeug com sal."""
+    return generate_password_hash(password)
 
 
 def create_user(username: str, password: str) -> Optional[Dict[str, Any]]:
@@ -134,16 +136,16 @@ def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
     conn = get_connection()
     cursor = conn.cursor()
     
-    password_hash = hash_password(password)
+    # Primeiro, buscar o usuário pelo username
     cursor.execute(
-        'SELECT id, username, created_at FROM users WHERE username = ? AND password_hash = ?',
-        (username, password_hash)
+        'SELECT id, username, password_hash, created_at FROM users WHERE username = ?',
+        (username,)
     )
     
     row = cursor.fetchone()
     conn.close()
     
-    if row:
+    if row and check_password_hash(row['password_hash'], password):
         return {
             'id': row['id'],
             'username': row['username'],
@@ -413,6 +415,106 @@ def search_conversations(user_id: int, query: str) -> List[Dict[str, Any]]:
     conn.close()
     
     return [dict(row) for row in rows]
+
+
+# ========================================
+# ALPHABOT DATA PERSISTENCE
+# ========================================
+
+def save_alphabot_data(user_id: int, dataframe_json: str, metadata: Dict[str, Any]) -> bool:
+    """
+    Salva dados do AlphaBot (DataFrame + metadata) para um usuário.
+    Retorna: True se salvou com sucesso, False caso contrário.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Criar estrutura de dados completa
+        alphabot_data = {
+            'dataframe': dataframe_json,
+            'metadata': metadata,
+            'updated_at': datetime.now().isoformat()
+        }
+        
+        cursor.execute(
+            'UPDATE users SET alphabot_data_json = ? WHERE id = ?',
+            (json.dumps(alphabot_data), user_id)
+        )
+        conn.commit()
+        
+        # Verificar se atualizou alguma linha
+        if cursor.rowcount > 0:
+            print(f"✅ Dados do AlphaBot salvos para usuário {user_id}")
+            return True
+        else:
+            print(f"⚠️ Usuário {user_id} não encontrado para salvar dados")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Erro ao salvar dados do AlphaBot: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def load_alphabot_data(user_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Carrega dados do AlphaBot para um usuário.
+    Retorna: dict com 'dataframe' (JSON) e 'metadata', ou None se não houver dados.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute(
+            'SELECT alphabot_data_json FROM users WHERE id = ?',
+            (user_id,)
+        )
+        
+        row = cursor.fetchone()
+        if row and row['alphabot_data_json']:
+            alphabot_data = json.loads(row['alphabot_data_json'])
+            print(f"✅ Dados do AlphaBot carregados para usuário {user_id}")
+            return alphabot_data
+        else:
+            print(f"ℹ️ Nenhum dado do AlphaBot encontrado para usuário {user_id}")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Erro ao carregar dados do AlphaBot: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def clear_alphabot_data(user_id: int) -> bool:
+    """
+    Remove dados do AlphaBot para um usuário.
+    Retorna: True se removeu com sucesso, False caso contrário.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute(
+            'UPDATE users SET alphabot_data_json = NULL WHERE id = ?',
+            (user_id,)
+        )
+        conn.commit()
+        
+        if cursor.rowcount > 0:
+            print(f"✅ Dados do AlphaBot removidos para usuário {user_id}")
+            return True
+        else:
+            print(f"⚠️ Usuário {user_id} não encontrado para remover dados")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Erro ao remover dados do AlphaBot: {e}")
+        return False
+    finally:
+        conn.close()
 
 
 # ========================================
