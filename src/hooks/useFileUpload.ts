@@ -27,10 +27,11 @@ export function useFileUpload() {
   /**
    * Faz upload de arquivos
    * @param files - Array de arquivos
+   * @param userId - ID do usuário para isolamento de sessão
    * @returns Resposta do servidor ou null em caso de erro
    */
   const upload = useCallback(
-    async (files: File[]): Promise<AlphabotUploadResponse | null> => {
+    async (files: File[], userId?: number): Promise<AlphabotUploadResponse | null> => {
       if (files.length === 0) {
         setState((prev) => ({
           ...prev,
@@ -67,7 +68,7 @@ export function useFileUpload() {
       toast.loading('📎 Enviando arquivos...', { id: 'file-upload' })
 
       try {
-        const response = await uploadAlphabotFiles(files, (progress) => {
+        const response = await uploadAlphabotFiles(files, userId, (progress) => {
           setState((prev) => ({
             ...prev,
             progress,

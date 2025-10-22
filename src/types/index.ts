@@ -85,6 +85,7 @@ export interface ErrorResponse {
 export interface AlphabotChatRequest {
   session_id: string
   message: string
+  user_id?: number
 }
 
 export interface DrivebotChatRequest {

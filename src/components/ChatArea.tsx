@@ -95,6 +95,11 @@ export default function ChatArea() {
       formData.append('files', file)
     })
     
+    // Add user_id for session isolation
+    if (user?.id) {
+      formData.append('user_id', user.id.toString())
+    }
+    
     try {
       // Adicionar mensagem de upload manualmente (sem chamar o backend)
       addMessage({

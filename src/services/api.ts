@@ -81,12 +81,18 @@ async function fetchWithErrorHandling<T>(
  */
 export async function uploadAlphabotFiles(
   files: File[],
+  userId?: number,
   onProgress?: (progress: { loaded: number; total: number; percentage: number }) => void
 ): Promise<AlphabotUploadResponse> {
   const formData = new FormData()
   files.forEach((file) => {
     formData.append('files', file)
   })
+  
+  // Add user_id if provided
+  if (userId) {
+    formData.append('user_id', userId.toString())
+  }
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
@@ -138,15 +144,18 @@ export async function uploadAlphabotFiles(
  * Envia mensagem para o AlphaBot
  * @param sessionId - ID da sessão (obtido no upload)
  * @param message - Mensagem do usuário
+ * @param userId - ID do usuário (para isolamento de sessão)
  * @returns Resposta do bot
  */
 export async function sendAlphabotMessage(
   sessionId: string,
-  message: string
+  message: string,
+  userId?: number
 ): Promise<AlphabotChatResponse> {
   const body: AlphabotChatRequest = {
     session_id: sessionId,
     message,
+    user_id: userId,
   }
 
   return fetchWithErrorHandling<AlphabotChatResponse>(

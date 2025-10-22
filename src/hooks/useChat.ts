@@ -22,10 +22,11 @@ export function useChat(options: UseChatOptions) {
   /**
    * Envia uma mensagem para o bot
    * @param message - Texto da mensagem
+   * @param userId - ID do usuário para isolamento de sessão
    * @returns Mensagem de resposta do bot ou null em caso de erro
    */
   const sendMessage = useCallback(
-    async (message: string): Promise<Message | null> => {
+    async (message: string, userId?: number): Promise<Message | null> => {
       if (!message.trim()) {
         setError('Mensagem vazia')
         return null
@@ -43,7 +44,7 @@ export function useChat(options: UseChatOptions) {
             )
           }
 
-          const response = await sendAlphabotMessage(sessionId, message)
+          const response = await sendAlphabotMessage(sessionId, message, userId)
 
           // Criar mensagem do bot
           const botMessage: Message = {
