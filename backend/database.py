@@ -131,6 +131,7 @@ def create_user(username: str, password: str) -> Optional[Dict[str, Any]]:
 def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
     """
     Autentica usuário verificando senha.
+    Suporta tanto hashes antigos (SHA-256) quanto novos (werkzeug).
     Retorna: dict com dados do usuário, ou None se credenciais inválidas.
     """
     conn = get_connection()
@@ -143,14 +144,39 @@ def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
     )
     
     row = cursor.fetchone()
-    conn.close()
     
-    if row and check_password_hash(row['password_hash'], password):
-        return {
-            'id': row['id'],
-            'username': row['username'],
-            'created_at': row['created_at']
-        }
+    if row:
+        password_hash = row['password_hash']
+        
+        # Tentar primeiro com novo sistema (werkzeug)
+        if check_password_hash(password_hash, password):
+            conn.close()
+            return {
+                'id': row['id'],
+                'username': row['username'],
+                'created_at': row['created_at']
+            }
+        
+        # FALLBACK: Compatibilidade com sistema antigo (SHA-256)
+        old_hash = hashlib.sha256(password.encode()).hexdigest()  
+        if password_hash == old_hash:
+            # Senha correta com sistema antigo - migrar para novo sistema
+            print(f"🔄 Migrando senha do usuário {username} para sistema seguro")
+            new_hash = generate_password_hash(password)
+            cursor.execute(
+                'UPDATE users SET password_hash = ? WHERE id = ?',
+                (new_hash, row['id'])
+            )
+            conn.commit()
+            conn.close()
+            
+            return {
+                'id': row['id'],
+                'username': row['username'],
+                'created_at': row['created_at']
+            }
+    
+    conn.close()
     return None
 
 
