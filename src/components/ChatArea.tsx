@@ -100,6 +100,12 @@ export default function ChatArea() {
       formData.append('user_id', user.id.toString())
     }
     
+    // 🔥 CRÍTICO: Enviar conversation_id existente para evitar criar nova conversa
+    if (conversationId) {
+      formData.append('conversation_id', conversationId)
+      console.log(`📤 Enviando conversation_id existente: ${conversationId}`)
+    }
+    
     try {
       // Adicionar mensagem de upload manualmente (sem chamar o backend)
       addMessage({

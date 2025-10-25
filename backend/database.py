@@ -722,6 +722,32 @@ def get_alphabot_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
+def update_alphabot_conversation_session(conversation_id: str, session_id: str) -> bool:
+    """
+    Atualiza o session_id de uma conversa existente do AlphaBot.
+    Útil quando uma conversa é criada antes do upload.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            UPDATE alphabot_conversations
+            SET session_id = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (session_id, conversation_id))
+        
+        conn.commit()
+        return cursor.rowcount > 0
+        
+    except Exception as e:
+        print(f"❌ Erro ao atualizar session_id da conversa: {e}")
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
+
+
 def find_or_create_alphabot_conversation_for_session(user_id: int, session_id: str, title: Optional[str] = None) -> Optional[str]:
     """
     Retorna o ID de uma conversa existente para a sessão do AlphaBot (user_id + session_id)

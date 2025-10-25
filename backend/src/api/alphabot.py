@@ -95,6 +95,11 @@ def upload():
         user_id_raw = request.form.get('user_id')
         user_id = int(user_id_raw) if user_id_raw and user_id_raw.isdigit() else None
         
+        # 🔥 CRÍTICO: Aceitar conversation_id existente do frontend
+        conversation_id_from_frontend = request.form.get('conversation_id')
+        if conversation_id_from_frontend:
+            print(f"[AlphaBot Upload] 📥 Recebido conversation_id do frontend: {conversation_id_from_frontend}")
+        
         if not files or len(files) == 0:
             return jsonify({
                 "status": "error",
@@ -234,20 +239,40 @@ def upload():
                 )
                 if success:
                     print(f"[AlphaBot Upload] ✅ Sessão persistida no banco para user_id={user_id}, session_id={session_id}")
-                    # Criar conversa inicial vinculada à sessão, para facilitar o chat
-                    created_conversation_id = str(uuid.uuid4())
-                    conv_title = f"Análise AlphaBot - {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}"
-                    conv_ok = database.create_alphabot_conversation(
-                        conversation_id=created_conversation_id,
-                        session_id=session_id,
-                        user_id=int(user_id),
-                        title=conv_title
-                    )
-                    print(f"[AlphaBot Upload] {'✅' if conv_ok else '⚠️'} Conversa inicial criada: {created_conversation_id}")
+                    
+                    # 🔥 USAR conversation_id existente ou criar novo
+                    if conversation_id_from_frontend:
+                        # Usar conversation_id enviado pelo frontend
+                        created_conversation_id = conversation_id_from_frontend
+                        print(f"[AlphaBot Upload] ♻️ Usando conversation_id existente: {created_conversation_id}")
+                        
+                        # Atualizar a sessão para vincular ao conversation_id
+                        # (caso a conversa tenha sido criada antes do upload)
+                        try:
+                            database.update_alphabot_conversation_session(
+                                conversation_id=created_conversation_id,
+                                session_id=session_id
+                            )
+                            print(f"[AlphaBot Upload] ✅ Conversation {created_conversation_id} vinculado à sessão {session_id}")
+                        except Exception as e:
+                            print(f"[AlphaBot Upload] ⚠️ Não foi possível atualizar conversation_session: {e}")
+                    else:
+                        # Criar nova conversa (comportamento antigo)
+                        created_conversation_id = str(uuid.uuid4())
+                        conv_title = f"Análise AlphaBot - {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}"
+                        conv_ok = database.create_alphabot_conversation(
+                            conversation_id=created_conversation_id,
+                            session_id=session_id,
+                            user_id=int(user_id),
+                            title=conv_title
+                        )
+                        print(f"[AlphaBot Upload] {'✅' if conv_ok else '⚠️'} Conversa inicial criada: {created_conversation_id}")
                 else:
                     print(f"[AlphaBot Upload] ⚠️ Falha ao criar sessão no banco (retornou False)")
             except Exception as e:
                 print(f"[AlphaBot Upload] ❌ Erro ao persistir sessão: {e}")
+                import traceback
+                traceback.print_exc()
                 import traceback
                 traceback.print_exc()
         
