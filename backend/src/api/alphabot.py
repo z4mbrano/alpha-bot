@@ -310,17 +310,34 @@ def chat():
             df = pd.read_json(io.StringIO(session_data["dataframe"]), orient='split')
             metadata = session_data["metadata"]
         
-        # Preparar contexto dos dados para o LLM
-        data_context = f"""
-**Dados Disponíveis:**
-- Total de Registros: {metadata['total_records']}
-- Total de Colunas: {metadata['total_columns']}
-- Colunas: {', '.join(metadata['columns'])}
-- Arquivos: {', '.join(metadata['files_success'])}
-"""
-        
-        if metadata['date_columns']:
-            data_context += f"\n- Colunas Temporais: {', '.join(metadata['date_columns'])}"
+        # Preparar contexto dos dados para o LLM (robusto a metadados ausentes)
+        total_records = metadata.get('total_records') if isinstance(metadata, dict) else None
+        total_columns = metadata.get('total_columns') if isinstance(metadata, dict) else None
+        columns_list = metadata.get('columns', []) if isinstance(metadata, dict) else []
+
+        # Obter lista de arquivos com fallback: metadata.files_success (memória) OU session_row.files_info (banco)
+        files_success = []
+        if isinstance(metadata, dict) and 'files_success' in metadata:
+            files_success = metadata.get('files_success') or []
+        elif user_id and 'session_row' in locals():
+            try:
+                files_success = session_row.get('files_info') or []
+            except Exception:
+                files_success = []
+
+        data_context = "\n**Dados Disponíveis:**\n"
+        if total_records is not None:
+            data_context += f"- Total de Registros: {total_records}\n"
+        if total_columns is not None:
+            data_context += f"- Total de Colunas: {total_columns}\n"
+        if columns_list:
+            data_context += f"- Colunas: {', '.join(columns_list)}\n"
+        if files_success:
+            data_context += f"- Arquivos: {', '.join(files_success)}\n"
+
+        date_cols = metadata.get('date_columns', []) if isinstance(metadata, dict) else []
+        if date_cols:
+            data_context += f"- Colunas Temporais: {', '.join(date_cols)}\n"
         
         # Análise estatística básica para contexto
         numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
