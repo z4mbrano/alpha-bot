@@ -339,9 +339,10 @@ Apresente APENAS a resposta final do Júri ao usuário.
         # Persistir resposta do bot
         if conversation_id and user_id:
             try:
+                # ATENÇÃO: schema aceita apenas 'user' ou 'bot'
                 database.add_alphabot_message(
                     conversation_id=conversation_id,
-                    author='alphabot',
+                    author='bot',
                     text=answer,
                     time=int(pd.Timestamp.now().timestamp() * 1000)
                 )

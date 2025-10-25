@@ -56,16 +56,24 @@ def process_dataframe_unified(df: pd.DataFrame, source_info: str = "unknown") ->
         'Preço': 'numeric',
         'Total': 'numeric',
         'Faturamento': 'numeric',
-        'Vendas': 'numeric'
+        'Vendas': 'numeric',
+        # Termos compostos comuns
+        'Preço_Unitário': 'numeric',
+        'Preco_Unitario': 'numeric',
+        'Valor_Total': 'numeric',
+        'Receita': 'numeric'
     }
     
     logger.info("[UNIFIED PROCESSOR] 🔧 Aplicando tipagem forçada para colunas financeiras...")
     
+    # Lista de termos financeiros em minúsculas (para comparação robusta)
+    financial_terms_lower = [k.lower() for k in financial_columns.keys()]
+
     for col in processed_df.columns:
         col_lower = col.lower()
         
-        # Detectar colunas financeiras por nome
-        is_financial = any(fin_term in col_lower for fin_term in financial_columns.keys())
+        # Detectar colunas financeiras por nome (case-insensitive, substring)
+        is_financial = any(fin_term in col_lower for fin_term in financial_terms_lower)
         
         if is_financial or col in financial_columns:
             logger.info(f"[UNIFIED PROCESSOR] Processando coluna financeira: '{col}'")
