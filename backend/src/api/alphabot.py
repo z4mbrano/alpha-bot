@@ -121,15 +121,30 @@ def upload():
 
         # 🔧 Aplicar processamento UNIFICADO (corrige Quantidade/Receita/Data)
         try:
+            print(f"[AlphaBot Upload] 📊 Iniciando processamento de {len(consolidated_df)} linhas, {len(consolidated_df.columns)} colunas")
+            print(f"[AlphaBot Upload] Colunas originais: {list(consolidated_df.columns)}")
+            print(f"[AlphaBot Upload] Tipos originais: {dict(consolidated_df.dtypes)}")
+            
             consolidated_df, processing_metadata = process_dataframe_unified(
                 consolidated_df,
                 source_info="AlphaBot_Upload"
             )
             print(f"[AlphaBot Upload] ✅ Processamento unificado concluído: {len(consolidated_df)} linhas")
+            print(f"[AlphaBot Upload] Colunas processadas: {list(consolidated_df.columns)}")
+            print(f"[AlphaBot Upload] Tipos processados: {dict(consolidated_df.dtypes)}")
+            
+            # Exibir sumário financeiro se disponível
+            if processing_metadata.get('financial_summary'):
+                fin_summary = processing_metadata['financial_summary']
+                print(f"[AlphaBot Upload] 💰 Sumário Financeiro:")
+                print(f"  - Quantidade Total: {fin_summary.get('total_quantidade', 'N/A')}")
+                print(f"  - Receita Total: {fin_summary.get('total_receita_formatted', 'N/A')}")
+            
         except ValueError as val_error:
             # Erro específico de conversão de valores
-            print(f"[AlphaBot Upload] ❌ Erro de validação de dados: {val_error}")
+            print(f"[AlphaBot Upload] ❌ ValueError - Erro de validação de dados: {val_error}")
             import traceback
+            print(f"[AlphaBot Upload] Stack trace completo:")
             traceback.print_exc()
             return jsonify({
                 "status": "error",

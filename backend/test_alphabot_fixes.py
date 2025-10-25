@@ -86,7 +86,31 @@ def test_data_processing():
         # 4. Verificar metadata
         print("\n📊 Metadata do Processamento:")
         for col, info in metadata.get('columns_processed', {}).items():
-            print(f"   {col}: {info.get('type')} ({info.get('original_dtype')} → {info.get('final_dtype')})")
+            col_type = info.get('type')
+            if col_type == 'financial_numeric':
+                success_rate = info.get('conversion_success_rate', 0)
+                print(f"   {col}: {col_type} ({info.get('original_dtype')} → {info.get('final_dtype')}) - {success_rate:.1f}% sucesso")
+            elif col_type == 'temporal':
+                valid_dates = info.get('valid_dates', 0)
+                date_range = info.get('date_range', {})
+                print(f"   {col}: {col_type} ({valid_dates} datas válidas, {date_range.get('min')} a {date_range.get('max')})")
+            else:
+                print(f"   {col}: {col_type} ({info.get('original_dtype')} → {info.get('final_dtype')})")
+        
+        # 5. Verificar se componentes de data foram criados
+        date_components = [c for c in processed_df.columns if any(c.endswith(suffix) for suffix in ['_Ano', '_Mes', '_Trimestre', '_Mes_Nome'])]
+        if date_components:
+            print(f"\n📅 Componentes de Data Criados:")
+            for comp in date_components:
+                print(f"   {comp}: {processed_df[comp].dtype} (amostra: {processed_df[comp].head(3).tolist()})")
+        
+        # 6. Verificar threshold de conversão (agora é 80%)
+        for col, info in metadata.get('columns_processed', {}).items():
+            if info.get('type') == 'financial_numeric':
+                success_rate = info.get('conversion_success_rate', 0)
+                if success_rate < 80:
+                    print(f"\n❌ ERRO: Coluna '{col}' convertida com taxa de sucesso abaixo de 80% ({success_rate:.1f}%)")
+                    return False
         
         print("\n✅ TESTE 1 PASSOU!")
         return True

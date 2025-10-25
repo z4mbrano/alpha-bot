@@ -108,7 +108,7 @@ def process_dataframe_unified(df: pd.DataFrame, source_info: str = "unknown") ->
         
         # SE FOR FINANCEIRA E DO TIPO OBJECT, TENTAR CONVERTER
         if is_financial and processed_df[col].dtype == 'object':
-            logger.info(f"[UNIFIED PROCESSOR] 💰 Processando coluna financeira: '{col}'")
+            logger.info(f"[UNIFIED PROCESSOR] 💰 Processando coluna financeira detectada: '{col}'")
             
             try:
                 # Converter para string primeiro para limpar formatação
@@ -122,19 +122,22 @@ def process_dataframe_unified(df: pd.DataFrame, source_info: str = "unknown") ->
                 processed_df[col] = processed_df[col].str.strip()
                 
                 # Converter para numérico (CRÍTICO: errors='coerce' para limpar dados ruins)
-                original_dtype = processed_df[col].dtype
-                processed_df[col] = pd.to_numeric(processed_df[col], errors='coerce')
+                # Primeiro, testar a conversão em uma cópia para validar
+                test_conversion = pd.to_numeric(processed_df[col], errors='coerce')
                 
-                # Verificar se a conversão foi bem-sucedida (pelo menos 50% dos valores convertidos)
-                valid_count = processed_df[col].notna().sum()
+                # Verificar se a conversão foi bem-sucedida (pelo menos 80% dos valores convertidos)
+                valid_count = test_conversion.notna().sum()
                 total_count = len(processed_df)
                 success_rate = (valid_count / total_count) * 100 if total_count > 0 else 0
                 
-                if success_rate < 50:
-                    logger.warning(f"[UNIFIED PROCESSOR] ⚠️ '{col}': Conversão falhou ({success_rate:.1f}% válidos). Revertendo.")
+                if success_rate < 80:
+                    logger.warning(f"[UNIFIED PROCESSOR] ⚠️ '{col}': Conversão numérica com baixa taxa de sucesso ({success_rate:.1f}% válidos). Mantendo como texto.")
                     # Reverter para tipo original
-                    processed_df[col] = df[col].copy()
                     continue
+                
+                # Aplicar a conversão validada
+                original_dtype = processed_df[col].dtype
+                processed_df[col] = test_conversion
                 
                 # Preencher NaN com 0 para cálculos financeiros
                 nan_count = processed_df[col].isna().sum()
@@ -203,6 +206,41 @@ def process_dataframe_unified(df: pd.DataFrame, source_info: str = "unknown") ->
             if invalid_dates > 0:
                 processed_df.loc[~epoch_filter, col] = pd.NaT
                 logger.warning(f"[UNIFIED PROCESSOR] ⚠️ '{col}': Removidas {invalid_dates} datas inválidas (epoch/futuro)")
+            
+            # 🔧 EXTRAIR COMPONENTES DE DATA (Ano, Mês, Trimestre, Nome do Mês)
+            if processed_df[col].notna().any():
+                try:
+                    # Criar colunas derivadas
+                    processed_df[f'{col}_Ano'] = processed_df[col].dt.year
+                    processed_df[f'{col}_Mes'] = processed_df[col].dt.month
+                    processed_df[f'{col}_Trimestre'] = processed_df[col].dt.to_period('Q').astype(str)
+                    
+                    # Nome do mês em português
+                    try:
+                        import locale
+                        # Tentar configurar locale para português
+                        for loc in ['pt_BR.UTF-8', 'pt_BR', 'Portuguese_Brazil.1252', 'Portuguese']:
+                            try:
+                                locale.setlocale(locale.LC_TIME, loc)
+                                logger.info(f"[UNIFIED PROCESSOR] ✅ Locale configurado: {loc}")
+                                break
+                            except:
+                                continue
+                    except Exception as e:
+                        logger.warning(f"[UNIFIED PROCESSOR] ⚠️ Não foi possível configurar locale pt_BR: {e}")
+                    
+                    # Mapear nomes de meses em português (fallback se locale falhar)
+                    month_names_pt = {
+                        1: 'Janeiro', 2: 'Fevereiro', 3: 'Março', 4: 'Abril',
+                        5: 'Maio', 6: 'Junho', 7: 'Julho', 8: 'Agosto',
+                        9: 'Setembro', 10: 'Outubro', 11: 'Novembro', 12: 'Dezembro'
+                    }
+                    processed_df[f'{col}_Mes_Nome'] = processed_df[f'{col}_Mes'].map(month_names_pt)
+                    
+                    logger.info(f"[UNIFIED PROCESSOR] ✅ Componentes de data extraídos: {col}_Ano, {col}_Mes, {col}_Trimestre, {col}_Mes_Nome")
+                    
+                except Exception as e:
+                    logger.warning(f"[UNIFIED PROCESSOR] ⚠️ Erro ao extrair componentes de data de '{col}': {e}")
             
             metadata["columns_processed"][col] = {
                 "type": "temporal",
