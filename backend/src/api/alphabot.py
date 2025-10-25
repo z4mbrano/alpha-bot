@@ -444,132 +444,176 @@ def chat():
 
         # Cálculo determinístico para perguntas de faturamento (evita alucinações)
         computed_answer = None
+        
+        # PRIMEIRO: Verificar se a pergunta é realmente sobre faturamento/receita
+        import re
+        msg_lower = message.lower()
+        is_faturamento_question = any(keyword in msg_lower for keyword in [
+            'fatura', 'faturamento', 'receita', 'valor total', 'total de vendas',
+            'quanto vendeu', 'vendas totais', 'revenue'
+        ])
+        
         try:
-            import re
-            # Detectar ano solicitado na pergunta (fallback: maior ano disponível)
-            years_in_msg = re.findall(r"(19\d{2}|20\d{2})", message)
-            requested_year = int(years_in_msg[0]) if years_in_msg else None
+            # SÓ calcular deterministicamente se for pergunta de faturamento
+            if is_faturamento_question:
+                # Detectar ano solicitado na pergunta (fallback: maior ano disponível)
+                years_in_msg = re.findall(r"(19\d{2}|20\d{2})", message)
+                requested_year = int(years_in_msg[0]) if years_in_msg else None
 
-            # Detectar possíveis colunas base de data e seus derivados
-            date_cols = metadata.get('date_columns', []) if isinstance(metadata, dict) else []
-            base_date_col = date_cols[0] if date_cols else None
-            ano_col = f"{base_date_col}_Ano" if base_date_col and f"{base_date_col}_Ano" in df.columns else None
-            mes_col = f"{base_date_col}_Mes" if base_date_col and f"{base_date_col}_Mes" in df.columns else None
-            mes_nome_col = f"{base_date_col}_Mes_Nome" if base_date_col and f"{base_date_col}_Mes_Nome" in df.columns else None
+                # Detectar possíveis colunas base de data e seus derivados
+                date_cols = metadata.get('date_columns', []) if isinstance(metadata, dict) else []
+                base_date_col = date_cols[0] if date_cols else None
+                ano_col = f"{base_date_col}_Ano" if base_date_col and f"{base_date_col}_Ano" in df.columns else None
+                mes_col = f"{base_date_col}_Mes" if base_date_col and f"{base_date_col}_Mes" in df.columns else None
+                mes_nome_col = f"{base_date_col}_Mes_Nome" if base_date_col and f"{base_date_col}_Mes_Nome" in df.columns else None
 
-            # Identificar coluna de receita
-            receita_candidates = [c for c in df.columns if any(k in c.lower() for k in ['receita', 'faturamento'])]
-            if not receita_candidates:
-                receita_candidates = [c for c in df.columns if 'valor' in c.lower() or 'total' in c.lower()]
-            receita_col = None
-            for c in receita_candidates:
-                if pd.api.types.is_numeric_dtype(df[c]):
-                    receita_col = c
-                    break
-            # Fallback para receita derivada criada pelo processor
-            if not receita_col and 'Receita_Total_Derivada' in df.columns and pd.api.types.is_numeric_dtype(df['Receita_Total_Derivada']):
-                receita_col = 'Receita_Total_Derivada'
+                # Identificar coluna de receita
+                receita_candidates = [c for c in df.columns if any(k in c.lower() for k in ['receita', 'faturamento'])]
+                if not receita_candidates:
+                    receita_candidates = [c for c in df.columns if 'valor' in c.lower() or 'total' in c.lower()]
+                receita_col = None
+                for c in receita_candidates:
+                    if pd.api.types.is_numeric_dtype(df[c]):
+                        receita_col = c
+                        break
+                # Fallback para receita derivada criada pelo processor
+                if not receita_col and 'Receita_Total_Derivada' in df.columns and pd.api.types.is_numeric_dtype(df['Receita_Total_Derivada']):
+                    receita_col = 'Receita_Total_Derivada'
 
-            # Se necessário, tentar derivar receita a partir de quantidade x preço
-            if not receita_col:
-                qtd_col = next((c for c in df.columns if 'quantidade' in c.lower() and pd.api.types.is_numeric_dtype(df[c])), None)
-                preco_col = next((c for c in df.columns if any(k in c.lower() for k in ['preco', 'preço']) and pd.api.types.is_numeric_dtype(df[c])), None)
-                if qtd_col and preco_col:
-                    receita_col = '__tmp_receita__'
-                    df[receita_col] = df[qtd_col].fillna(0) * df[preco_col].fillna(0)
+                # Se necessário, tentar derivar receita a partir de quantidade x preço
+                if not receita_col:
+                    qtd_col = next((c for c in df.columns if 'quantidade' in c.lower() and pd.api.types.is_numeric_dtype(df[c])), None)
+                    preco_col = next((c for c in df.columns if any(k in c.lower() for k in ['preco', 'preço']) and pd.api.types.is_numeric_dtype(df[c])), None)
+                    if qtd_col and preco_col:
+                        receita_col = '__tmp_receita__'
+                        df[receita_col] = df[qtd_col].fillna(0) * df[preco_col].fillna(0)
 
-            # Prosseguir apenas se houver receita numérica e algum indicador temporal
-            if receita_col and (ano_col or base_date_col in df.columns):
-                # Filtrar ano
-                if not requested_year and ano_col:
-                    # Escolher maior ano disponível
-                    try:
-                        requested_year = int(df[ano_col].dropna().max()) if not df[ano_col].dropna().empty else None
-                    except Exception:
-                        requested_year = None
-                if ano_col and requested_year:
-                    df_year = df[df[ano_col] == requested_year]
-                elif base_date_col in df.columns and pd.api.types.is_datetime64_any_dtype(df[base_date_col]):
-                    df_year = df[df[base_date_col].dt.year == requested_year] if requested_year else df
-                else:
-                    df_year = df
+                # Prosseguir apenas se houver receita numérica e algum indicador temporal
+                if receita_col and (ano_col or base_date_col in df.columns):
+                    # Filtrar ano
+                    if not requested_year and ano_col:
+                        # Escolher maior ano disponível
+                        try:
+                            requested_year = int(df[ano_col].dropna().max()) if not df[ano_col].dropna().empty else None
+                        except Exception:
+                            requested_year = None
+                    if ano_col and requested_year:
+                        df_year = df[df[ano_col] == requested_year]
+                    elif base_date_col in df.columns and pd.api.types.is_datetime64_any_dtype(df[base_date_col]):
+                        df_year = df[df[base_date_col].dt.year == requested_year] if requested_year else df
+                    else:
+                        df_year = df
 
-                total_receita = float(df_year[receita_col].sum()) if not df_year.empty else 0.0
+                    total_receita = float(df_year[receita_col].sum()) if not df_year.empty else 0.0
 
-                # Mensal
-                if mes_col and requested_year:
-                    grp = df_year.groupby([mes_col], dropna=True)[receita_col].sum().reset_index()
-                    grp = grp.sort_values(mes_col)
-                    mes_map = df[[mes_col, mes_nome_col]].dropna().drop_duplicates().set_index(mes_col)[mes_nome_col].to_dict() if mes_nome_col in df.columns else {}
-                    monthly = [(int(r[mes_col]), float(r[receita_col]), mes_map.get(int(r[mes_col]))) for _, r in grp.iterrows()]
-                else:
-                    monthly = []
+                    # Mensal
+                    if mes_col and requested_year:
+                        grp = df_year.groupby([mes_col], dropna=True)[receita_col].sum().reset_index()
+                        grp = grp.sort_values(mes_col)
+                        mes_map = df[[mes_col, mes_nome_col]].dropna().drop_duplicates().set_index(mes_col)[mes_nome_col].to_dict() if mes_nome_col in df.columns else {}
+                        monthly = [(int(r[mes_col]), float(r[receita_col]), mes_map.get(int(r[mes_col]))) for _, r in grp.iterrows()]
+                    else:
+                        monthly = []
 
-                # Formatar
-                def brl(v: float) -> str:
-                    return f"R$ {v:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+                    # Formatar
+                    def brl(v: float) -> str:
+                        return f"R$ {v:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
-                lines = []
-                lines.append(f"## 🎯 OBJETIVO")
-                if requested_year:
-                    lines.append(f"Informar a fatura total do ano de {requested_year} e comparar a fatura total dos 12 meses.")
-                else:
-                    lines.append(f"Informar a fatura total e comparação mensal.")
-                
-                lines.append("")
-                lines.append(f"## 📊 EXECUÇÃO E RESULTADO")
-                if requested_year:
-                    lines.append(f"A fatura total para o ano de {requested_year} foi calculada como **{brl(total_receita)}**.")
-                else:
-                    lines.append(f"A fatura total encontrada é de **{brl(total_receita)}**.")
-
-                if monthly:
-                    lines.append("")
-                    lines.append("A seguir, a comparação da fatura total para cada um dos 12 meses:")
-                    lines.append("")
-                    lines.append("| Mês | Fatura Mensal (R$) |")
-                    lines.append("|-----|-------------------:|")
-                    # Calcular o total real somando os valores mensais exibidos
-                    total_from_monthly = sum(val for _, val, _ in monthly)
-                    for m, val, nome in monthly:
-                        label = nome.capitalize() if isinstance(nome, str) else str(m)
-                        lines.append(f"| {label} | {brl(val).replace('R$ ', '')} |")
-                    lines.append(f"| **TOTAL** | **{brl(total_from_monthly).replace('R$ ', '')}** |")
+                    lines = []
+                    lines.append(f"## 🎯 OBJETIVO")
+                    if requested_year:
+                        lines.append(f"Informar a fatura total do ano de {requested_year} e comparar a fatura total dos 12 meses.")
+                    else:
+                        lines.append(f"Informar a fatura total e comparação mensal.")
                     
-                    # Adicionar insight
-                    if len(monthly) >= 2:
-                        max_month = max(monthly, key=lambda x: x[1])
-                        min_month = min(monthly, key=lambda x: x[1])
-                        max_label = max_month[2].capitalize() if isinstance(max_month[2], str) else str(max_month[0])
-                        min_label = min_month[2].capitalize() if isinstance(min_month[2], str) else str(min_month[0])
-                        
-                        lines.append("")
-                        lines.append("## 💡 INSIGHT")
-                        lines.append(f"A análise da fatura mensal de {requested_year if requested_year else 'período analisado'} revela uma variação significativa ao longo do ano. ")
-                        lines.append(f"Observa-se que o mês de **{max_label}** ({brl(max_month[1])}) apresentou a maior fatura, ")
-                        lines.append(f"enquanto **{min_label}** ({brl(min_month[1])}) registrou a menor fatura. ")
-                        lines.append("Esta sazonalidade pode ser um fator importante para planejamento e projeções futuras.")
+                    lines.append("")
+                    lines.append(f"## 📊 EXECUÇÃO E RESULTADO")
+                    if requested_year:
+                        lines.append(f"A fatura total para o ano de {requested_year} foi calculada como **{brl(total_receita)}**.")
+                    else:
+                        lines.append(f"A fatura total encontrada é de **{brl(total_receita)}**.")
 
-                computed_answer = "\n".join(lines)
+                    if monthly:
+                        lines.append("")
+                        lines.append("A seguir, a comparação da fatura total para cada um dos 12 meses:")
+                        lines.append("")
+                        lines.append("| Mês | Fatura Mensal (R$) |")
+                        lines.append("|-----|-------------------:|")
+                        # Calcular o total real somando os valores mensais exibidos
+                        total_from_monthly = sum(val for _, val, _ in monthly)
+                        for m, val, nome in monthly:
+                            label = nome.capitalize() if isinstance(nome, str) else str(m)
+                            lines.append(f"| {label} | {brl(val).replace('R$ ', '')} |")
+                        lines.append(f"| **TOTAL** | **{brl(total_from_monthly).replace('R$ ', '')}** |")
+                        
+                        # Adicionar insight
+                        if len(monthly) >= 2:
+                            max_month = max(monthly, key=lambda x: x[1])
+                            min_month = min(monthly, key=lambda x: x[1])
+                            max_label = max_month[2].capitalize() if isinstance(max_month[2], str) else str(max_month[0])
+                            min_label = min_month[2].capitalize() if isinstance(min_month[2], str) else str(min_month[0])
+                            
+                            lines.append("")
+                            lines.append("## 💡 INSIGHT")
+                            lines.append(f"A análise da fatura mensal de {requested_year if requested_year else 'período analisado'} revela uma variação significativa ao longo do ano. ")
+                            lines.append(f"Observa-se que o mês de **{max_label}** ({brl(max_month[1])}) apresentou a maior fatura, ")
+                            lines.append(f"enquanto **{min_label}** ({brl(min_month[1])}) registrou a menor fatura. ")
+                            lines.append("Esta sazonalidade pode ser um fator importante para planejamento e projeções futuras.")
+
+                    computed_answer = "\n".join(lines)
         except Exception as e:
             print(f"[AlphaBot Chat] ⚠️ Falha no cálculo determinístico: {e}")
 
         if computed_answer:
             answer = computed_answer
         else:
-            # Criar serviço de IA e usar fallback com contexto/preview
+            # Criar serviço de IA com todo o dataset (não apenas preview)
             ai_service = get_ai_service('alphabot')
-            validation_prompt = f"""
+            
+            # Preparar análise completa dos dados para contexto da IA
+            analysis_context = f"""
 {data_context}
 
-**Preview dos Dados (5 primeiras linhas):**
-```
-{data_preview}
-```
+**Análise Completa dos Dados:**
+
+Total de registros: {len(df)}
+
+Colunas disponíveis: {', '.join(df.columns.tolist())}
+
+**Estatísticas Resumidas:**
+"""
+            # Adicionar estatísticas de colunas numéricas
+            numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+            if numeric_cols:
+                analysis_context += "\nColunas Numéricas:\n"
+                for col in numeric_cols[:10]:  # Limitar a 10 para não estourar token
+                    analysis_context += f"- {col}: soma={df[col].sum():,.2f}, média={df[col].mean():,.2f}\n"
+            
+            # Adicionar informações de colunas categóricas
+            categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
+            if categorical_cols:
+                analysis_context += "\nColunas Categóricas:\n"
+                for col in categorical_cols[:10]:  # Limitar a 10
+                    unique_vals = df[col].nunique()
+                    analysis_context += f"- {col}: {unique_vals} valores únicos"
+                    if unique_vals <= 20:  # Mostrar valores se forem poucos
+                        vals = df[col].value_counts().head(5).to_dict()
+                        analysis_context += f" (top 5: {vals})"
+                    analysis_context += "\n"
+            
+            validation_prompt = f"""
+{analysis_context}
 
 **Pergunta do Usuário:** {message}
 
-Responda apenas com base nos dados; se a pergunta exigir somas/contagens fora do preview, explique a limitação e peça para rodar "calcular faturamento {pd.Timestamp.now().year}".
+Você tem acesso aos dados completos acima. Analise e responda a pergunta de forma detalhada e estruturada.
+
+IMPORTANTE:
+- Use formato Markdown com seções ## 🎯 OBJETIVO, ## 📊 EXECUÇÃO E RESULTADO, ## 💡 INSIGHT
+- Para comparações por região, agrupe por coluna Região
+- Para evolução temporal, use colunas de data e agrupe por período
+- Forneça números específicos e insights acionáveis
+- Crie tabelas quando apropriado
 """
             answer = ai_service.generate_response(validation_prompt)
         
