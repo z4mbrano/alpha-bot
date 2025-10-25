@@ -585,3 +585,60 @@ def delete_session(session_id: str):
         "message": "Sessão removida com sucesso",
         "session_id": session_id
     }), 200
+
+
+# ===============================
+# Endpoints de Histórico AlphaBot
+# ===============================
+
+@alphabot_bp.route('/conversations', methods=['GET'])
+def list_alphabot_conversations():
+    """
+    Lista conversas do AlphaBot para um usuário.
+    Query params: user_id (obrigatório)
+    """
+    try:
+        user_id_param = request.args.get('user_id')
+        if not user_id_param or not user_id_param.isdigit():
+            return jsonify({"error": "user_id é obrigatório e deve ser numérico"}), 400
+        user_id = int(user_id_param)
+
+        convs = database.get_user_alphabot_conversations(user_id)
+        return jsonify({
+            "user_id": user_id,
+            "conversations": convs
+        }), 200
+    except Exception as e:
+        return jsonify({"error": f"Erro ao listar conversas: {str(e)}"}), 500
+
+
+@alphabot_bp.route('/conversation/<conversation_id>', methods=['GET'])
+def get_alphabot_conversation_meta(conversation_id: str):
+    """
+    Retorna metadados básicos de uma conversa específica do AlphaBot.
+    """
+    try:
+        conv = database.get_alphabot_conversation(conversation_id)
+        if not conv:
+            return jsonify({"error": "Conversa não encontrada", "conversation_id": conversation_id}), 404
+        return jsonify(conv), 200
+    except Exception as e:
+        return jsonify({"error": f"Erro ao buscar conversa: {str(e)}"}), 500
+
+
+@alphabot_bp.route('/conversation/<conversation_id>/messages', methods=['GET'])
+def get_alphabot_conversation_msgs(conversation_id: str):
+    """
+    Retorna todas as mensagens de uma conversa do AlphaBot.
+    """
+    try:
+        conv = database.get_alphabot_conversation(conversation_id)
+        if not conv:
+            return jsonify({"error": "Conversa não encontrada", "conversation_id": conversation_id}), 404
+        messages = database.get_alphabot_conversation_messages(conversation_id)
+        return jsonify({
+            "conversation_id": conversation_id,
+            "messages": messages
+        }), 200
+    except Exception as e:
+        return jsonify({"error": f"Erro ao buscar mensagens: {str(e)}"}), 500
