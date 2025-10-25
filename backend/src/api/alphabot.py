@@ -105,13 +105,10 @@ def upload():
         # Consolidar tabelas
         consolidated_df = analyzer.consolidate_tables()
 
-        # Remover duplicatas
-        initial_count = len(consolidated_df)
-        consolidated_df = consolidated_df.drop_duplicates()
-        duplicates_removed = initial_count - len(consolidated_df)
-        
-        if duplicates_removed > 0:
-            print(f"[AlphaBot] ⚠️ Removidas {duplicates_removed} linhas duplicadas")
+        # Alinhar com DriveBot: NÃO remover duplicatas automaticamente (apenas reportar)
+        duplicates_count = int(consolidated_df.duplicated().sum())
+        if duplicates_count > 0:
+            print(f"[AlphaBot] ℹ️ {duplicates_count} linhas duplicadas detectadas (não removidas para paridade com DriveBot)")
         
         # Gerar ID de sessão único
         session_id = str(uuid.uuid4())
@@ -246,7 +243,7 @@ def upload():
                 "files_success": result['files_ok'],
                 "files_failed": result['files_failed'],
                 "date_range": date_range,
-                "duplicates_removed": duplicates_removed
+                "duplicates_detected": duplicates_count
             }
         }
         if created_conversation_id:
