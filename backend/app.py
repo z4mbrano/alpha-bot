@@ -1482,6 +1482,27 @@ A resposta entregue ao usuário (formulada pelo Júri) deve SEMPRE seguir esta e
   - Percentuais: 45,7%
   - Grandes números: 1.234.567 (com separador de milhares)
 
+# REGRAS ESPECÍFICAS DE ANÁLISE
+
+## ANÁLISE DE "PRODUTO MAIS VENDIDO"
+Quando o usuário perguntar sobre "produto mais vendido", "qual produto vendeu mais", ou variações similares:
+
+1. **Primeira Prioridade:** Verificar se existe uma coluna numérica chamada 'Quantidade' (ou similar: 'Qtd', 'Unidades', 'Volume')
+   - Se existir: Responder baseado na **SOMA da quantidade de unidades vendidas** por produto
+   - Formato: "O produto mais vendido foi [Produto X] com [N] unidades vendidas"
+
+2. **Insight Adicional:** Sempre complementar com informação sobre receita
+   - Verificar se existe coluna de receita ('Receita_Total', 'Valor', 'Faturamento')
+   - Adicionar: "Em termos de receita, o produto com maior faturamento foi [Produto Y] com R$ [Valor]"
+
+3. **Transparência:** Se não houver coluna de quantidade, deixar claro
+   - "Não foi possível identificar uma coluna de quantidade. Baseando a análise em receita total..."
+
+## VALIDAÇÃO DE TIPOS DE DADOS
+- **Colunas 'Quantidade':** SEMPRE devem ser tratadas como numéricas, nunca como temporais
+- **Colunas 'Data':** SEMPRE devem ser tratadas como temporais, com validação de epoch time (rejeitar 1970)
+- **Colunas 'Receita/Valor':** SEMPRE devem ser tratadas como numéricas com formatação monetária
+
 # REGRAS ADICIONAIS
 - **Stateless:** Você não tem memória de arquivos de conversas anteriores. Cada nova sessão de anexos é um novo universo de dados.
 - **Foco no Anexo:** Se o usuário fizer uma pergunta sobre dados sem ter anexado arquivos primeiro, lembre-o gentilmente de que você precisa de um anexo para começar a análise.
@@ -3332,46 +3353,45 @@ def alphabot_upload():
             print(f"[AlphaBot] ⚠️ Removidas {duplicates_removed} linhas duplicadas")
         print(f"[AlphaBot] ✅ DataFrame final: {len(consolidated_df)} linhas após remoção de duplicatas")
         
-        # 🔧 FIX #1: Usar processamento robusto de datas (mesmo do DriveBot)
-        print("[AlphaBot] 🔄 Aplicando processamento robusto de datas...")
-        datetime_columns = detect_datetime_columns(consolidated_df)
-        date_columns_found = list(datetime_columns.keys())
+        # 🔧 CORREÇÃO CRÍTICA: Usar processamento unificado DriveBot + AlphaBot
+        print("[AlphaBot] 🔄 Aplicando processamento UNIFICADO de dados...")
         
-        print(f"[AlphaBot] ✅ Colunas de data detectadas: {date_columns_found}")
+        # Importar função unificada
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__), 'src', 'utils'))
+        from data_processor import process_dataframe_unified
         
-        # Aplicar as colunas processadas de volta ao DataFrame
-        for col_name, processed_series in datetime_columns.items():
-            consolidated_df[col_name] = processed_series
-            
-            # Criar colunas auxiliares consistentes
-            try:
-                consolidated_df[f'{col_name}_Ano'] = processed_series.dt.year
-                consolidated_df[f'{col_name}_Mes'] = processed_series.dt.month
-                consolidated_df[f'{col_name}_Mes_Nome'] = processed_series.dt.strftime('%B').str.lower()
-                consolidated_df[f'{col_name}_Trimestre'] = processed_series.dt.quarter
-                print(f"[AlphaBot] ✅ Colunas auxiliares criadas para '{col_name}'")
-            except Exception as e:
-                print(f"[AlphaBot] ⚠️ Erro ao criar colunas auxiliares para '{col_name}': {e}")
+        # Processar com função unificada
+        consolidated_df, processing_metadata = process_dataframe_unified(
+            consolidated_df, 
+            source_info="AlphaBot_Upload"
+        )
         
-        # CORREÇÃO #2: Processar colunas numéricas (especialmente valores monetários)
-        for col in consolidated_df.columns:
-            if any(term in col.lower() for term in ['receita', 'valor', 'total', 'faturamento', 'vendas', 'preco', 'preço']):
+        print(f"[AlphaBot] ✅ Processamento unificado concluído!")
+        print(f"[AlphaBot] 📊 Colunas processadas: {list(processing_metadata['columns_processed'].keys())}")
+        
+        # Mostrar resumo financeiro se disponível
+        if processing_metadata.get('financial_summary'):
+            fin_summary = processing_metadata['financial_summary']
+            print(f"[AlphaBot] 💰 Total Receita: {fin_summary.get('total_receita_formatted', 'N/A')}")
+            print(f"[AlphaBot] 📦 Total Quantidade: {fin_summary.get('total_quantidade', 'N/A'):,.0f}")
+        
+        # Extrair colunas de data processadas
+        date_columns_found = []
+        for col, info in processing_metadata.get('columns_processed', {}).items():
+            if info.get('type') == 'temporal':
+                date_columns_found.append(col)
+                
+                # Criar colunas auxiliares
                 try:
-                    # Converter para string primeiro, depois limpar formatação
-                    consolidated_df[col] = consolidated_df[col].astype(str)
-                    # Remover símbolos de moeda e separadores de milhares
-                    consolidated_df[col] = consolidated_df[col].str.replace(r'[R$\s]', '', regex=True)
-                    # Trocar vírgula por ponto para decimais (padrão brasileiro)
-                    consolidated_df[col] = consolidated_df[col].str.replace(',', '.')
-                    # Converter para numérico
-                    consolidated_df[col] = pd.to_numeric(consolidated_df[col], errors='coerce')
-                    print(f"[AlphaBot] ✅ Coluna numérica '{col}' processada. Soma total: {consolidated_df[col].sum():.2f}")
+                    consolidated_df[f'{col}_Ano'] = consolidated_df[col].dt.year
+                    consolidated_df[f'{col}_Mes'] = consolidated_df[col].dt.month
+                    consolidated_df[f'{col}_Mes_Nome'] = consolidated_df[col].dt.strftime('%B').str.lower()
+                    consolidated_df[f'{col}_Trimestre'] = consolidated_df[col].dt.quarter
+                    print(f"[AlphaBot] ✅ Colunas auxiliares criadas para '{col}'")
                 except Exception as e:
-                    print(f"[AlphaBot] ⚠️ Erro ao processar coluna numérica '{col}': {e}")
-        
-        # Remover linhas onde TODAS as colunas de data são NaT (se houver colunas de data)
-        if date_columns_found:
-            consolidated_df = consolidated_df.dropna(subset=date_columns_found, how='all')
+                    print(f"[AlphaBot] ⚠️ Erro ao criar colunas auxiliares para '{col}': {e}")
         
         # Preparar metadata
         metadata = {
@@ -3840,18 +3860,35 @@ def alphabot_chat():
         if not session_id or not message:
             return jsonify({"error": "session_id e message são obrigatórios"}), 400
         
-        # 🔧 FIX #3 (AlphaBot específico): Salvar mensagem do usuário no sistema AlphaBot
+        # 🔧 FIX CRÍTICO: Garantir que conversa AlphaBot existe antes de salvar mensagens
         if conversation_id and user_id:
             try:
+                # Verificar se conversa existe, senão criar
+                existing_conversation = database.get_alphabot_conversation(conversation_id)
+                if not existing_conversation:
+                    # Criar conversa AlphaBot
+                    title = f"Chat AlphaBot - {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+                    success = database.create_alphabot_conversation(
+                        conversation_id=conversation_id,
+                        session_id=session_id,
+                        user_id=int(user_id),
+                        title=title
+                    )
+                    if success:
+                        print(f"[AlphaBot Chat] ✅ Nova conversa criada: {conversation_id}")
+                    else:
+                        print(f"[AlphaBot Chat] ❌ Falha ao criar conversa: {conversation_id}")
+                
+                # Salvar mensagem do usuário
                 database.add_alphabot_message(
                     conversation_id=conversation_id,
                     author='user',
                     text=message,
                     time=int(datetime.now().timestamp() * 1000)
                 )
-                print(f"✅ Mensagem do usuário salva na conversa AlphaBot {conversation_id}")
+                print(f"[AlphaBot Chat] ✅ Mensagem do usuário salva na conversa {conversation_id}")
             except Exception as db_error:
-                print(f"⚠️ Erro ao salvar mensagem do usuário no AlphaBot: {db_error}")
+                print(f"[AlphaBot Chat] ❌ Erro ao salvar mensagem do usuário: {db_error}")
         
         # 🚀 VERIFICAR CACHE PRIMEIRO (SPRINT 1)
         cached_response = get_cached_response(session_id, message)
@@ -3859,6 +3896,17 @@ def alphabot_chat():
             # 🔧 FIX #3: Salvar resposta em cache no sistema AlphaBot correto
             if conversation_id and user_id:
                 try:
+                    # Garantir que conversa existe (pode ser primeira mensagem em cache)
+                    existing_conversation = database.get_alphabot_conversation(conversation_id)
+                    if not existing_conversation:
+                        title = f"Chat AlphaBot - {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+                        database.create_alphabot_conversation(
+                            conversation_id=conversation_id,
+                            session_id=session_id,
+                            user_id=int(user_id),
+                            title=title
+                        )
+                    
                     database.add_alphabot_message(
                         conversation_id=conversation_id,
                         author='alphabot',
@@ -3867,9 +3915,9 @@ def alphabot_chat():
                         chart_data=json.dumps(cached_response.get('chart')) if cached_response.get('chart') else None,
                         suggestions=cached_response.get('suggestions')
                     )
-                    print(f"✅ Resposta em cache do AlphaBot salva na conversa {conversation_id}")
+                    print(f"[AlphaBot Chat] ✅ Resposta em cache salva na conversa {conversation_id}")
                 except Exception as db_error:
-                    print(f"⚠️ Erro ao salvar resposta em cache do AlphaBot: {db_error}")
+                    print(f"[AlphaBot Chat] ❌ Erro ao salvar resposta em cache: {db_error}")
             
             return jsonify(cached_response)
         

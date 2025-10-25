@@ -689,6 +689,39 @@ def create_alphabot_conversation(conversation_id: str, session_id: str, user_id:
         conn.close()
 
 
+def get_alphabot_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Busca uma conversa específica do AlphaBot por ID.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            SELECT id, session_id, user_id, title, created_at, updated_at
+            FROM alphabot_conversations
+            WHERE id = ?
+        ''', (conversation_id,))
+        
+        row = cursor.fetchone()
+        if row:
+            return {
+                "id": row[0],
+                "session_id": row[1],
+                "user_id": row[2],
+                "title": row[3],
+                "created_at": row[4],
+                "updated_at": row[5]
+            }
+        return None
+        
+    except Exception as e:
+        print(f"❌ Erro ao buscar conversa AlphaBot: {e}")
+        return None
+    finally:
+        conn.close()
+
+
 def add_alphabot_message(conversation_id: str, author: str, text: str, time: int, chart_data: Optional[str] = None, suggestions: Optional[List[str]] = None) -> bool:
     """
     Adiciona uma mensagem à conversa do AlphaBot.
