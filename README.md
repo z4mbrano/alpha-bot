@@ -1,27 +1,29 @@
 # 🤖 Alpha Insights — Plataforma de Análise Inteligente de Dados
 
 [![Status](https://img.shields.io/badge/status-production-success)]()
-[![Frontend](https://img.shields.io/badge/frontend-React%2018-blue)]()
-[![Backend](https://img.shields.io/badge/backend-Flask%203.0-green)]()
-[![AI](https://img.shields.io/badge/AI-Google%20Gemini-orange)]()
+[![Frontend](https://img.shields.io/badge/frontend-React%2018-61dafb?logo=react)]()
+[![Backend](https://img.shields.io/badge/backend-Flask%203.0-000000?logo=flask)]()
+[![AI](https://img.shields.io/badge/AI-Google%20Gemini-4285F4?logo=google)]()
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.2-3178C6?logo=typescript)]()
+[![License](https://img.shields.io/badge/license-MIT-green)]()
 
-> Plataforma moderna de análise de dados com múltiplos bots especializados alimentados por IA, desenvolvida para a **Alpha Insights**, empresa de varejo de tecnologia.
+> Plataforma moderna de análise de dados com múltiplos bots especializados alimentados por IA, desenvolvida para transformar dados empresariais em insights acionáveis através de conversação natural.
 
 ---
 
 ## 📋 Índice
 
 - [Visão Geral](#-visão-geral)
+- [Features](#-features)
 - [Arquitetura](#️-arquitetura)
-- [Estrutura do Projeto](#-estrutura-do-projeto)
 - [Pré-requisitos](#-pré-requisitos)
 - [Instalação](#-instalação)
 - [Configuração](#️-configuração)
 - [Execução](#-execução)
 - [Bots Disponíveis](#-bots-disponíveis)
-- [API Endpoints](#-api-endpoints)
-- [Testes](#-testes)
+- [API Reference](#-api-reference)
 - [Deploy](#-deploy)
+- [Estrutura do Projeto](#-estrutura-do-projeto)
 - [Contribuição](#-contribuição)
 - [Licença](#-licença)
 
@@ -29,190 +31,150 @@
 
 ## 🎯 Visão Geral
 
-### O que é o Alpha Insights?
+**Alpha Insights** é uma solução completa de análise de dados empresariais que combina interface intuitiva com inteligência artificial avançada. A plataforma permite que usuários não-técnicos extraiam insights complexos de planilhas e dados no Google Drive através de conversação natural.
 
-Alpha Insights é uma solução completa de análise de dados que combina:
+### Por que Alpha Insights?
 
-✨ **Interface moderna e responsiva** construída com React + TypeScript  
-🤖 **Múltiplos bots especializados** com IA (Google Gemini)  
-📊 **Análise automatizada de planilhas** (CSV, XLSX)  
-☁️ **Integração com Google Drive** para análise de pastas  
-🌓 **Tema Dark/Light** com persistência local  
-📱 **100% Responsivo** (Desktop, Tablet, Mobile)
+- ⚡ **Análise instantânea** de milhares de registros
+- 🧠 **IA Multimodal** com Google Gemini 2.5 Flash
+- 📊 **Visualizações automáticas** de dados
+- 🔐 **Multi-tenant** com isolamento por usuário
+- 🌍 **Deploy em produção** (Vercel + Railway)
 
-### Features Principais
+---
 
-- **ALPHABOT**: Especialista em análise de planilhas anexadas
-- **DRIVEBOT**: Analista autônomo para dados no Google Drive
-- **Chat em tempo real** com indicadores de digitação
-- **Upload múltiplo** de arquivos com validação
-- **Histórico de conversas** por bot
-- **API RESTful** segura e escalável
+## ✨ Features
+
+### 🤖 Bots Especializados
+
+#### **ALPHABOT** - Analista de Planilhas
+- 📎 Upload de múltiplos arquivos (CSV, XLSX)
+- 🔍 Detecção automática de colunas (numéricas, categóricas, temporais)
+- 📈 Cálculos determinísticos (faturamento, totais, médias)
+- 📊 Respostas estruturadas com tabelas Markdown
+- 💾 Histórico de conversas persistente
+
+#### **DRIVEBOT** - Analista Autônomo Google Drive
+- ☁️ Integração nativa com Google Drive API
+- 📁 Análise de pastas completas
+- 🔄 Sincronização automática de dados
+- 🎯 Motor de validação com 3 personas (Analista → Crítico → Júri)
+- 📉 Gráficos interativos automáticos
+
+### 🎨 Interface & UX
+
+- 🌓 **Dark/Light Mode** com persistência
+- 📱 **Totalmente Responsivo** (mobile-first)
+- ⚡ **Indicadores em tempo real** (typing, loading)
+- 💬 **Chat fluido** com scroll automático
+- 🎯 **Navegação intuitiva** entre bots
+
+### 🔒 Segurança & Performance
+
+- 🔐 Autenticação JWT
+- 🏢 Isolamento multi-tenant
+- 📦 Cache inteligente de dados
+- ⚙️ Rate limiting
+- 🛡️ Validação de entrada robusta
 
 ---
 
 ## 🏗️ Arquitetura
 
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Frontend (React + Vite)                  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │   AlphaBot   │  │   DriveBot   │  │     Auth     │     │
+│  │   Upload     │  │   Drive API  │  │    Login     │     │
+│  └──────────────┘  └──────────────┘  └──────────────┘     │
+└────────────────────────┬────────────────────────────────────┘
+                         │ REST API
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Backend (Flask)                          │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  API Blueprints: /alphabot, /drivebot, /auth        │  │
+│  └──────────────────────────────────────────────────────┘  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │ AI Service   │  │ Data Process │  │   Database   │     │
+│  │ (Gemini 2.5) │  │   (Pandas)   │  │   (SQLite)   │     │
+│  └──────────────┘  └──────────────┘  └──────────────┘     │
+└─────────────────────────────────────────────────────────────┘
+                         │
+                         ▼
+                  Google Cloud APIs
+              (Gemini AI + Drive API)
+```
+
 ### Stack Tecnológico
 
-#### Frontend
-- **React 18** com TypeScript
-- **Vite** como bundler ultrarrápido
-- **Tailwind CSS** para estilização moderna
-- **Lucide React** para ícones vetoriais
-- **Context API** para gerenciamento de estado
+**Frontend:**
+- ⚛️ React 18 + TypeScript
+- 🎨 Tailwind CSS 3.4
+- ⚡ Vite 5
+- 📊 Recharts (gráficos)
+- 🎭 Zustand (state)
+- 📝 React Markdown
 
-#### Backend
-- **Flask 3.0** como framework web
-- **Google AI (Gemini)** para respostas inteligentes
-- **Google Drive API** para acesso a arquivos
-- **Pandas** para análise de dados
-- **CORS** habilitado para comunicação segura
+**Backend:**
+- 🐍 Python 3.11
+- 🌶️ Flask 3.0
+- 🤖 Google Generative AI SDK
+- 🗄️ SQLite
+- 🐼 Pandas (processamento de dados)
 
-### Diagrama de Arquitetura
-
-```
-┌─────────────────┐
-│   React App     │
-│  (Port 5173)    │
-└────────┬────────┘
-         │ HTTP/REST
-         ▼
-┌─────────────────┐      ┌──────────────┐
-│   Flask API     │◄────►│ Google AI    │
-│  (Port 5000)    │      │  (Gemini)    │
-└────────┬────────┘      └──────────────┘
-         │
-         ├──────► Google Drive API
-         │
-         └──────► Pandas (Análise)
-```
+**DevOps:**
+- 🚀 Vercel (frontend)
+- 🚂 Railway (backend)
+- 🐳 Docker
+- 🔄 GitHub Actions (CI/CD)
 
 ---
 
-## 📁 Estrutura do Projeto
-
-```
-alpha-bot/
-├── src/                         # Frontend React
-│   ├── components/              # Componentes React
-│   │   ├── ChatArea.tsx         # Área principal de chat
-│   │   ├── Sidebar.tsx          # Menu lateral
-│   │   └── MessageBubble.tsx    # Bolha de mensagem
-│   ├── contexts/                # Context API
-│   │   ├── BotContext.tsx       # Estado dos bots
-│   │   └── ThemeContext.tsx     # Tema dark/light
-│   ├── App.tsx                  # Componente raiz
-│   ├── main.tsx                 # Entry point
-│   └── index.css                # Estilos globais + tokens
-│
-├── backend/                     # API Flask
-│   ├── src/
-│   │   ├── api/                 # Rotas/Endpoints
-│   │   │   ├── alphabot.py      # Rotas do AlphaBot
-│   │   │   └── drivebot.py      # Rotas do DriveBot
-│   │   ├── services/            # Lógica de negócio
-│   │   │   ├── ai_service.py    # Integração com Gemini
-│   │   │   ├── drive_service.py # Google Drive
-│   │   │   └── data_analyzer.py # Análise de dados
-│   │   ├── models/              # Modelos de dados
-│   │   │   ├── conversation.py
-│   │   │   └── session.py
-│   │   ├── utils/               # Utilitários
-│   │   │   ├── file_handlers.py
-│   │   │   ├── data_processors.py
-│   │   │   └── validators.py
-│   │   ├── prompts/             # Prompts de IA
-│   │   │   ├── alphabot_prompt.py
-│   │   │   └── drivebot_prompt.py
-│   │   └── config/              # Configurações
-│   │       └── settings.py
-│   ├── tests/                   # Testes unitários
-│   ├── app.py                   # Entry point
-│   ├── requirements.txt
-│   ├── service-account.json     # Credenciais Google (não versionado)
-│   └── .env                     # Variáveis de ambiente (não versionado)
-│
-├── docs/                        # Documentação
-│   ├── ARCHITECTURE.md
-│   ├── API.md
-│   ├── DEPLOYMENT.md
-│   ├── GOOGLE_DRIVE_SETUP.md
-│   ├── FRAMEWORK-EXEMPLO.md
-│   └── changelogs/
-│       ├── DRIVEBOT_V5_CHANGELOG.md
-│       ├── DRIVEBOT_V6_MEMORIA_CONVERSACIONAL.md
-│       ├── DRIVEBOT_V7_MONOLOGO_ANALITICO.md
-│       ├── DRIVEBOT_V10_MOTOR_AUTONOMO.md
-│       └── DRIVEBOT_V11_ANALISTA_CONFIAVEL.md
-│
-├── scripts/                     # Scripts de automação
-│   ├── test-alphabot.ps1
-│   ├── test-drivebot-v3.ps1
-│   ├── test-drivebot-v4.ps1
-│   └── test-drivebot.ps1
-│
-├── assets/                      # Recursos estáticos
-│   └── images/
-│       ├── alpha-icon.png
-│       └── preview.png
-│
-├── index.html                   # HTML raiz
-├── package.json                 # Dependências Node
-├── vite.config.ts               # Config Vite
-├── tailwind.config.cjs          # Config Tailwind
-├── tsconfig.json                # Config TypeScript
-├── postcss.config.cjs           # Config PostCSS
-├── README.md                    # Este arquivo
-└── .gitignore
-```
-
----
-
-## 🔧 Pré-requisitos
+## 📦 Pré-requisitos
 
 Antes de começar, certifique-se de ter instalado:
 
-### Obrigatórios
-- **Node.js** 18+ e **npm** 9+
-- **Python** 3.10+
-- **Git**
-
-### Opcional
-- **Google Cloud Account** (para DriveBot)
-- **Conta Google AI Studio** (para APIs Gemini)
+- **Node.js** 18+ ([Download](https://nodejs.org/))
+- **Python** 3.11+ ([Download](https://www.python.org/))
+- **Git** ([Download](https://git-scm.com/))
+- **Conta Google Cloud** (para Gemini API)
+- **Conta Google** (para Drive API - opcional)
 
 ---
 
-## 💿 Instalação
+## 🚀 Instalação
 
-### 1. Clone o Repositório
+### 1. Clone o repositório
 
 ```bash
 git clone https://github.com/z4mbrano/alpha-bot.git
 cd alpha-bot
 ```
 
-### 2. Configure o Frontend
+### 2. Configurar Frontend
 
 ```bash
 # Instalar dependências
 npm install
+
+# ou com yarn
+yarn install
 ```
 
-### 3. Configure o Backend
+### 3. Configurar Backend
 
 ```bash
-# Navegar para o backend
 cd backend
 
-# Criar ambiente virtual (recomendado)
+# Criar ambiente virtual
 python -m venv venv
 
-# Ativar o ambiente virtual
-# Windows (PowerShell)
-.\venv\Scripts\Activate.ps1
-# Linux/Mac
+# Ativar ambiente virtual
+# Windows:
+venv\Scripts\activate
+# Linux/Mac:
 source venv/bin/activate
 
 # Instalar dependências
@@ -223,297 +185,414 @@ pip install -r requirements.txt
 
 ## ⚙️ Configuração
 
-### 1. Variáveis de Ambiente
+### Frontend (.env)
 
-Crie um arquivo `.env` na pasta `backend/`:
+Crie um arquivo `.env` na raiz do projeto:
 
 ```env
-# API Keys do Google AI Studio
-DRIVEBOT_API_KEY=sua_chave_drivebot_aqui
-ALPHABOT_API_KEY=sua_chave_alphabot_aqui
+# API Backend URL
+VITE_API_URL=http://localhost:5000
 
-# Google Service Account (para DriveBot)
-GOOGLE_SERVICE_ACCOUNT_FILE=service-account.json
-# OU
-GOOGLE_SERVICE_ACCOUNT_INFO={"type":"service_account",...}
+# Analytics (opcional)
+VITE_VERCEL_ANALYTICS_ID=seu_analytics_id
 ```
 
-### 2. Google Service Account (DriveBot)
+### Backend (.env)
 
-Para usar o DriveBot, você precisa de uma Service Account do Google Cloud:
+Crie um arquivo `.env` em `backend/`:
 
-1. Acesse o [Google Cloud Console](https://console.cloud.google.com/)
-2. Crie um novo projeto ou selecione um existente
-3. Ative as APIs: **Google Drive API** e **Google Sheets API**
-4. Crie uma **Service Account**
-5. Gere e baixe o arquivo JSON de credenciais
-6. Salve como `backend/service-account.json`
-7. **Importante**: Compartilhe suas pastas do Drive com o email da Service Account
+```env
+# Google Gemini API
+GOOGLE_API_KEY=sua_chave_api_gemini
 
-> 📚 Veja o guia detalhado: [docs/GOOGLE_DRIVE_SETUP.md](docs/GOOGLE_DRIVE_SETUP.md)
+# Google Drive API (opcional - só para DriveBot)
+GOOGLE_DRIVE_CREDENTIALS_PATH=./service-account.json
 
-### 3. API Keys do Gemini
+# Flask Config
+FLASK_ENV=development
+FLASK_DEBUG=True
+SECRET_KEY=sua_chave_secreta_aqui
 
-1. Acesse [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. Crie duas chaves separadas (uma para cada bot)
-3. Adicione-as no `.env` conforme acima
+# Database
+DATABASE_PATH=./alphabot.db
+
+# CORS (permitir frontend local)
+ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
+```
+
+### Obter Google Gemini API Key
+
+1. Acesse [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. Clique em "Create API Key"
+3. Copie a chave e cole em `GOOGLE_API_KEY`
+
+### Configurar Google Drive (Opcional)
+
+Para usar o DriveBot:
+
+1. Acesse [Google Cloud Console](https://console.cloud.google.com/)
+2. Crie um novo projeto
+3. Ative a Google Drive API
+4. Crie credenciais de Service Account
+5. Baixe o JSON e salve como `backend/service-account.json`
 
 ---
 
-## 🚀 Execução
+## ▶️ Execução
 
-### Modo Desenvolvimento
+### Desenvolvimento Local
 
-**Terminal 1 - Frontend:**
-```bash
-npm run dev
-```
-✅ Acesse: http://localhost:5173
-
-**Terminal 2 - Backend:**
+**Terminal 1 - Backend:**
 ```bash
 cd backend
 python app.py
+# Servidor rodando em http://localhost:5000
 ```
-✅ API: http://localhost:5000
 
-### Modo Produção
-
-**Build do Frontend:**
+**Terminal 2 - Frontend:**
 ```bash
-npm run build
+npm run dev
+# Aplicação em http://localhost:5173
 ```
 
-**Deploy do Backend:**
-```bash
-# Exemplo com Gunicorn
-cd backend
-gunicorn -w 4 -b 0.0.0.0:5000 app:app
-```
+### Acessar Aplicação
+
+Abra [http://localhost:5173](http://localhost:5173) no navegador.
+
+**Credenciais padrão:**
+- Usuário: `admin`
+- Senha: `admin123`
 
 ---
 
 ## 🤖 Bots Disponíveis
 
-### ALPHABOT 📊
-**Especialista em Análise de Planilhas Anexadas**
+### ALPHABOT - Analista de Planilhas
 
-- ✅ Upload de múltiplos arquivos (CSV, XLSX)
-- ✅ Detecção automática de tipos de dados
-- ✅ Motor de validação interna (Analista → Crítico → Júri)
-- ✅ Análise contextual e insights
+**Capacidades:**
+- ✅ Upload de até 10 arquivos simultâneos
+- ✅ Suporta CSV, XLSX, XLS, ODS, TSV
+- ✅ Detecção inteligente de tipos de dados
+- ✅ Cálculos financeiros precisos (R$ formatado)
+- ✅ Análises temporais (mensal, trimestral, anual)
+- ✅ Comparações por categoria/região
 
-**Fluxo:**
-1. Clique no botão de anexo 📎
-2. Selecione um ou mais arquivos `.csv` ou `.xlsx`
-3. Envie e aguarde o diagnóstico
-4. Faça perguntas sobre os dados
+**Exemplo de uso:**
+```
+Usuário: "Qual foi a fatura total de 2024?"
 
-### DRIVEBOT 💎
-**Analista Autônomo para Google Drive**
+AlphaBot:
+## 🎯 OBJETIVO
+Informar a fatura total do ano de 2024 e comparar a fatura total dos 12 meses.
 
-- ✅ Acesso seguro via Service Account
-- ✅ Leitura de múltiplos arquivos em pastas
-- ✅ Consolidação automática de dados
-- ✅ Kernel de dados persistente por conversa
+## 📊 EXECUÇÃO E RESULTADO
+A fatura total para o ano de 2024 foi calculada como R$ 11.384.047,18.
 
-**Fluxo:**
-1. Cole o ID ou URL de uma pasta do Google Drive
-2. Aguarde a indexação e relatório inicial
-3. Explore dados com perguntas em linguagem natural
+| Mês       | Fatura Mensal (R$) |
+|-----------|-------------------:|
+| Janeiro   |      1.084.997,91 |
+| Fevereiro |        990.121,09 |
+| ...       |               ... |
+| **TOTAL** | **11.384.047,18** |
+
+## 💡 INSIGHT
+Novembro apresentou a maior fatura (R$ 1.363.655,41) enquanto 
+Setembro registrou a menor (R$ 712.578,67).
+```
+
+**Perguntas que o AlphaBot responde:**
+- "Compare as vendas por região"
+- "Mostre a evolução das vendas ao longo do tempo"
+- "Qual produto teve maior faturamento?"
+- "Qual foi a média de vendas por mês?"
+
+### DRIVEBOT - Analista Google Drive
+
+**Capacidades:**
+- ✅ Análise de pastas completas no Drive
+- ✅ Consolidação automática de múltiplos arquivos
+- ✅ Motor de validação em 3 etapas
+- ✅ Geração automática de gráficos
+- ✅ Insights contextualizados
+
+**Exemplo de uso:**
+```
+Usuário: "Analise as vendas por região na pasta 'Dados 2024'"
+
+DriveBot: [Acessa Drive → Consolida dados → Gera análise]
+```
 
 ---
 
-## 📡 API Endpoints
+## 📡 API Reference
 
-### Health Check
-```http
-GET /health
-```
-**Response:**
+### Autenticação
+
+#### POST `/api/login`
+Login de usuário.
+
+**Request:**
 ```json
 {
-  "status": "ok",
-  "service": "Alpha Insights API"
+  "username": "admin",
+  "password": "admin123"
 }
-```
-
-### Chat - DriveBot
-```http
-POST /api/chat
-Content-Type: application/json
-
-{
-  "bot_id": "drivebot",
-  "message": "Cole o link da pasta do Drive",
-  "conversation_id": "uuid-opcional"
-}
-```
-
-### Upload - AlphaBot
-```http
-POST /api/alphabot/upload
-Content-Type: multipart/form-data
-
-files: [file1.csv, file2.xlsx]
 ```
 
 **Response:**
 ```json
 {
-  "session_id": "abc123",
-  "metadata": {
-    "files_success": ["vendas.csv"],
-    "total_records": 1500,
-    "columns": ["Produto", "Preco_Unitario", ...]
+  "message": "Login bem-sucedido",
+  "user": {
+    "id": 1,
+    "username": "admin"
   }
 }
 ```
 
-### Chat - AlphaBot
-```http
-POST /api/alphabot/chat
-Content-Type: application/json
+### AlphaBot
 
+#### POST `/api/alphabot/upload`
+Upload de arquivos para análise.
+
+**Request (FormData):**
+- `files`: File[] (múltiplos arquivos)
+- `user_id`: number
+- `conversation_id`: string (opcional)
+
+**Response:**
+```json
 {
-  "session_id": "abc123",
-  "message": "Liste os 5 produtos mais vendidos"
+  "status": "success",
+  "session_id": "abc-123",
+  "conversation_id": "def-456",
+  "metadata": {
+    "total_records": 3029,
+    "total_columns": 20,
+    "columns": ["ID_Transacao", "Produto", ...],
+    "date_columns": ["Data"],
+    "files_success": ["DADOS_JANUARY.CSV", ...]
+  }
 }
 ```
 
-> 📚 Documentação completa da API: [docs/API.md](docs/API.md)
+#### POST `/api/alphabot/chat`
+Enviar mensagem para análise.
+
+**Request:**
+```json
+{
+  "session_id": "abc-123",
+  "conversation_id": "def-456",
+  "user_id": 1,
+  "message": "Qual foi a fatura de 2024?"
+}
+```
+
+**Response:**
+```json
+{
+  "answer": "## 🎯 OBJETIVO\n...",
+  "metadata": {
+    "records_analyzed": 3029,
+    "computation_method": "deterministic"
+  }
+}
+```
+
+### DriveBot
+
+#### POST `/api/drivebot/chat`
+Análise de dados no Google Drive.
+
+**Request:**
+```json
+{
+  "user_id": 1,
+  "conversation_id": "xyz-789",
+  "message": "Analise a pasta 'Vendas 2024'"
+}
+```
+
+### Conversas
+
+#### GET `/api/conversations?user_id=1`
+Listar conversas do usuário.
+
+#### GET `/api/conversation/{id}/messages`
+Obter mensagens de uma conversa.
+
+---
+
+## 🚀 Deploy
+
+### Frontend (Vercel)
+
+1. Conecte seu repositório no [Vercel](https://vercel.com)
+2. Configure variáveis de ambiente:
+   ```
+   VITE_API_URL=https://seu-backend.railway.app
+   ```
+3. Deploy automático a cada push
+
+### Backend (Railway)
+
+1. Conecte seu repositório no [Railway](https://railway.app)
+2. Configure variáveis:
+   ```
+   GOOGLE_API_KEY=...
+   ALLOWED_ORIGINS=https://seu-frontend.vercel.app
+   ```
+3. Railway detecta automaticamente Flask
+
+### Docker (Alternativo)
+
+```bash
+# Build
+docker build -t alpha-insights .
+
+# Run
+docker run -p 5000:5000 -p 5173:5173 \
+  -e GOOGLE_API_KEY=... \
+  alpha-insights
+```
+
+---
+
+## 📁 Estrutura do Projeto
+
+```
+alpha-bot/
+├── backend/                    # Backend Flask
+│   ├── src/
+│   │   ├── api/               # Blueprints (alphabot, drivebot)
+│   │   ├── services/          # AI service, data analyzer
+│   │   ├── utils/             # Data processor, helpers
+│   │   ├── models/            # Data models
+│   │   └── prompts/           # AI prompts
+│   ├── database.py            # SQLite operations
+│   ├── app.py                 # Flask app entry
+│   └── requirements.txt       # Python deps
+│
+├── src/                       # Frontend React
+│   ├── components/            # UI components
+│   │   ├── ChatArea.tsx
+│   │   ├── MessageBubble.tsx
+│   │   └── Sidebar.tsx
+│   ├── contexts/              # React contexts
+│   │   ├── AuthContext.tsx
+│   │   ├── BotContext.tsx
+│   │   └── ConversationContext.tsx
+│   ├── services/              # API client
+│   └── types/                 # TypeScript types
+│
+├── docs/                      # Documentação técnica
+├── scripts/                   # Scripts de teste
+├── package.json               # Frontend deps
+├── vite.config.ts             # Vite config
+├── tailwind.config.cjs        # Tailwind config
+└── README.md                  # Este arquivo
+```
 
 ---
 
 ## 🧪 Testes
 
-### Frontend
-```bash
-# (Testes a serem implementados)
-npm test
-```
-
 ### Backend
 
-**Testes Automáticos:**
 ```bash
 cd backend
-python test_alphabot.py
-python validate_v11.py
-```
 
-**Scripts de Teste Manuais (PowerShell):**
-```powershell
-# Testar AlphaBot
-.\scripts\test-alphabot.ps1
+# Testar upload e chat do AlphaBot
+python test_alphabot.py
 
 # Testar DriveBot
-.\scripts\test-drivebot.ps1
-.\scripts\test-drivebot-v4.ps1
+python test_drivebot.py
 ```
 
----
-
-## 📦 Deploy
-
-### Frontend (Vercel/Netlify)
+### Frontend
 
 ```bash
-# Build
+# Build de produção
 npm run build
 
-# Deploy
-# Os arquivos estarão em dist/
+# Preview da build
+npm run preview
 ```
-
-### Backend (Heroku/Railway/Render)
-
-**Procfile:**
-```
-web: gunicorn -w 4 -b 0.0.0.0:$PORT app:app
-```
-
-**Runtime:**
-```
-python-3.11.9
-```
-
-> 📚 Guia completo: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
 ---
 
 ## 🤝 Contribuição
 
-Contribuições são bem-vindas! Para contribuir:
+Contribuições são bem-vindas! Siga estes passos:
 
-1. Fork o projeto
-2. Crie uma branch: `git checkout -b feature/nova-funcionalidade`
-3. Commit suas mudanças: `git commit -m 'Adiciona nova funcionalidade'`
-4. Push para a branch: `git push origin feature/nova-funcionalidade`
-5. Abra um Pull Request
+1. **Fork** o projeto
+2. Crie uma **branch** para sua feature (`git checkout -b feature/nova-feature`)
+3. **Commit** suas mudanças (`git commit -m 'Add: nova feature incrível'`)
+4. **Push** para a branch (`git push origin feature/nova-feature`)
+5. Abra um **Pull Request**
 
-### Diretrizes
+### Convenções de Commit
 
-- Siga os padrões de código existentes
-- Escreva testes para novas funcionalidades
-- Atualize a documentação conforme necessário
-- Mantenha commits atômicos e descritivos
+```
+feat: Nova funcionalidade
+fix: Correção de bug
+docs: Documentação
+style: Formatação
+refactor: Refatoração
+test: Testes
+chore: Manutenção
+```
+
+---
+
+## 📝 Roadmap
+
+- [ ] Autenticação OAuth2
+- [ ] Export de relatórios (PDF/Excel)
+- [ ] Gráficos interativos avançados
+- [ ] Notificações em tempo real
+- [ ] API pública documentada (Swagger)
+- [ ] Suporte a PostgreSQL
+- [ ] Deploy Kubernetes
+- [ ] App Mobile (React Native)
 
 ---
 
 ## 📄 Licença
 
-Este projeto é proprietário da **Alpha Insights**. Todos os direitos reservados.
+Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
 
 ---
 
-## 👨‍💻 Autores
+## 👥 Autores
 
-- **Guilherme Zambrano** - [@z4mbrano](https://github.com/z4mbrano)
-- **Alpha Insights Team** - Desenvolvimento e manutenção
+- **Alpha Insights Team** - [GitHub](https://github.com/z4mbrano)
 
 ---
 
 ## 📞 Suporte
 
-Para suporte ou dúvidas:
-- 📧 Email: suporte@alphainsights.com
-- 📝 Issues: [GitHub Issues](https://github.com/z4mbrano/alpha-bot/issues)
-- 📚 Docs: [Documentação Completa](docs/)
+Caso tenha dúvidas ou problemas:
+
+1. Abra uma [Issue](https://github.com/z4mbrano/alpha-bot/issues)
+2. Consulte a [Documentação](./docs/)
+3. Entre em contato via Pull Request
 
 ---
 
-## 🗺️ Roadmap
+## 🙏 Agradecimentos
 
-### Em Desenvolvimento
-- [ ] Refatoração backend (clean architecture)
-- [ ] Testes automatizados completos
-- [ ] Documentação API OpenAPI/Swagger
-
-### Planejado
-- [ ] Autenticação de usuários
-- [ ] Dashboard de analytics
-- [ ] Export de relatórios (PDF/Excel)
-- [ ] Novos bots especializados
-- [ ] Mobile app (React Native)
-
----
-
-## 📈 Changelog
-
-Veja todas as mudanças em: [docs/changelogs/](docs/changelogs/)
-
-**Últimas versões:**
-- **v2.0.0** - Reestruturação completa do código
-- **v1.1.0** - DriveBot v11 com motor autônomo
-- **v1.0.0** - Lançamento inicial
+- Google Gemini AI pela API poderosa
+- Comunidade React pela biblioteca incrível
+- Todos os contribuidores do projeto
 
 ---
 
 <div align="center">
 
-**Feito com ❤️ pela equipe Alpha Insights**
+**[⬆ Voltar ao topo](#-alpha-insights--plataforma-de-análise-inteligente-de-dados)**
 
-[⬆ Voltar ao topo](#-alpha-insights--plataforma-de-análise-inteligente-de-dados)
+Feito com ❤️ por Alpha Insights Team
 
 </div>
