@@ -34,7 +34,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 export default function ChatArea() {
   const { active, messages, send, addMessage, clearConversation, isTyping } = useBot()
   const { user } = useAuth()
-  const { activeConversationId, createNewConversation, switchConversation } = useConversation()
+  const { activeConversationId, createNewConversation, switchConversation, loadConversations } = useConversation()
   const [text, setText] = useState('')
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [isUploading, setIsUploading] = useState(false)
@@ -121,24 +121,26 @@ export default function ChatArea() {
       setSelectedFiles([])
       
       if (response.ok) {
-        // 🆕 MULTI-USUÁRIO: Se o backend retornou conversation_id, usar ele
+        // 🆕 CAPTURAR conversation_id retornado pelo backend
         if (data.conversation_id) {
           console.log(`✅ Backend retornou conversation_id: ${data.conversation_id}`)
-          const newConversationId = data.conversation_id
-          conversationId = newConversationId
           
-          // Se não estava usando essa conversa, atualizar para ela
-          if (user && conversationId !== activeConversationId) {
-            console.log(`🔄 Mudando para conversa ${conversationId}`)
-            switchConversation(newConversationId)
+          // Se já não estamos nessa conversa, mudar para ela
+          if (activeConversationId !== data.conversation_id) {
+            console.log(`🔄 Mudando para conversa ${data.conversation_id}`)
+            switchConversation(data.conversation_id)
+            
+            // Recarregar lista de conversas para incluir a nova
+            await loadConversations()
           }
         }
         
         // 🆕 MULTI-USUÁRIO: Usar conversation_id como session_id (em vez de global)
-        if (conversationId) {
+        const finalConversationId = data.conversation_id || conversationId
+        if (finalConversationId) {
           // Armazenar session_id vinculado à conversa
-          localStorage.setItem(`alphabot_session_${conversationId}`, data.session_id)
-          console.log(`✅ Session ${data.session_id} vinculado à conversa ${conversationId}`)
+          localStorage.setItem(`alphabot_session_${finalConversationId}`, data.session_id)
+          console.log(`✅ Session ${data.session_id} vinculado à conversa ${finalConversationId}`)
         } else {
           // Fallback: armazenar globalmente (compatibilidade)
           localStorage.setItem('alphabot_session_id', data.session_id)
