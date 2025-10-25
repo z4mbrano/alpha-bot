@@ -48,45 +48,38 @@ def process_dataframe_unified(df: pd.DataFrame, source_info: str = "unknown") ->
         "financial_summary": {}
     }
     
-    # 🔧 CORREÇÃO CRÍTICA 1: Forçar tipagem explícita de colunas financeiras
-    financial_columns = {
-        'Quantidade': 'numeric',
-        'Receita_Total': 'numeric', 
-        'Valor': 'numeric',
-        'Preco': 'numeric',
-        'Preço': 'numeric',
-        'Total': 'numeric',
-        'Faturamento': 'numeric',
-        'Vendas': 'numeric',
-        # Termos compostos comuns
-        'Preço_Unitário': 'numeric',
-        'Preco_Unitario': 'numeric',
-        'Valor_Total': 'numeric',
-        'Receita': 'numeric'
-    }
+    # 🔧 CORREÇÃO CRÍTICA 1: Palavras-chave para identificar colunas financeiras
+    financial_keywords = [
+        'quantidade', 'receita', 'valor', 'preco', 'preço', 'faturamento', 
+        'total', 'vendas', 'custo', 'lucro', 'margem', 'desconto'
+    ]
     
-    logger.info("[UNIFIED PROCESSOR] 🔧 Aplicando tipagem forçada para colunas financeiras...")
+    # Palavras-chave para EXCLUIR (colunas textuais que nunca devem ser convertidas)
+    # NOTA: 'quantidade' foi REMOVIDA desta lista - ela é financeira!
+    text_keywords = [
+        'nome', 'produto', 'categoria', 'cliente', 'regiao', 'região',
+        'cidade', 'estado', 'uf', 'loja', 'filial', 'grupo', 'setor', 
+        'descricao', 'descrição', 'id', 'codigo', 'código', 'transacao'
+    ]
     
-    # Helpers
+    # Meses em português que indicam coluna textual
+    months_pt = [
+        'janeiro', 'fevereiro', 'março', 'marco', 'abril', 'maio', 'junho',
+        'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
+    ]
+    
+    logger.info("[UNIFIED PROCESSOR] 🔧 Aplicando tipagem seletiva para colunas financeiras...")
+    
+    # Helper para normalização
     def normalize_name(s: str) -> str:
         s = s.lower()
         s = ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
         return s
 
-    # Termos financeiros/textuais normalizados
-    financial_terms_lower = [normalize_name(k) for k in financial_columns.keys()]
-    skip_text_terms = [
-        'mes_nome', 'nome', 'produto', 'categoria', 'cliente', 'regiao', 'região',
-        'cidade', 'estado', 'uf', 'loja', 'filial', 'grupo', 'setor', 'descricao', 'descrição',
-        'mes', 'mês', 'janeiro', 'fevereiro', 'março', 'marco', 'abril', 'maio', 'junho',
-        'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro', 'id_transacao',
-        'transacao', 'id', 'codigo', 'código'
-    ]
-    skip_text_terms = [normalize_name(t) for t in skip_text_terms]
-    
     # 🚨 CRÍTICO: Também excluir colunas auxiliares geradas anteriormente
     skip_column_suffixes = ['_mes_nome', '_nome', '_ano', '_mes', '_trimestre']
 
+    # Processar apenas colunas que parecem financeiras
     for col in processed_df.columns:
         col_norm = normalize_name(col)
         
@@ -95,39 +88,73 @@ def process_dataframe_unified(df: pd.DataFrame, source_info: str = "unknown") ->
             logger.info(f"[UNIFIED PROCESSOR] ⏭️ Pulando coluna auxiliar: '{col}'")
             continue
         
-        # Detectar colunas financeiras por nome (case-insensitive, substring) e evitar colunas textuais
-        is_financial = any(fin_term in col_norm for fin_term in financial_terms_lower) and not any(skip in col_norm for skip in skip_text_terms)
+        # VERIFICAR SE A COLUNA CONTÉM MESES (NUNCA CONVERTER)
+        if processed_df[col].dtype == 'object':
+            sample_values = processed_df[col].dropna().astype(str).str.lower().head(10).tolist()
+            contains_months = any(any(month in str(val) for month in months_pt) for val in sample_values)
+            if contains_months:
+                logger.info(f"[UNIFIED PROCESSOR] ⏭️ Pulando coluna de meses: '{col}' (contém: {sample_values[:3]})")
+                continue
         
-        if is_financial or col in financial_columns:
-            logger.info(f"[UNIFIED PROCESSOR] Processando coluna financeira: '{col}'")
+        # DETECTAR COLUNAS FINANCEIRAS POR PALAVRAS-CHAVE (com prioridade sobre exclusões)
+        is_financial = any(fin_kw in col_norm for fin_kw in financial_keywords)
+        
+        # VERIFICAR SE A COLUNA É TEXTUAL (NUNCA CONVERTER) - MAS APENAS SE NÃO FOR FINANCEIRA
+        if not is_financial:
+            is_text_column = any(text_kw in col_norm for text_kw in text_keywords)
+            if is_text_column:
+                logger.info(f"[UNIFIED PROCESSOR] ⏭️ Pulando coluna textual: '{col}'")
+                continue
+        
+        # SE FOR FINANCEIRA E DO TIPO OBJECT, TENTAR CONVERTER
+        if is_financial and processed_df[col].dtype == 'object':
+            logger.info(f"[UNIFIED PROCESSOR] 💰 Processando coluna financeira: '{col}'")
             
-            # Converter para string primeiro para limpar formatação
-            processed_df[col] = processed_df[col].astype(str)
-            
-            # Limpar formatação brasileira/internacional
-            processed_df[col] = processed_df[col].str.replace('R$', '', regex=False)
-            processed_df[col] = processed_df[col].str.replace('$', '', regex=False)
-            processed_df[col] = processed_df[col].str.replace('.', '', regex=False)  # Separador milhares
-            processed_df[col] = processed_df[col].str.replace(',', '.', regex=False)  # Decimal brasileiro
-            processed_df[col] = processed_df[col].str.strip()
-            
-            # Converter para numérico (CRÍTICO: errors='coerce' para limpar dados ruins)
-            original_dtype = processed_df[col].dtype
-            processed_df[col] = pd.to_numeric(processed_df[col], errors='coerce')
-            
-            # Preencher NaN com 0 para cálculos financeiros
-            nan_count = processed_df[col].isna().sum()
-            processed_df[col] = processed_df[col].fillna(0)
-            
-            metadata["columns_processed"][col] = {
-                "type": "financial_numeric",
-                "original_dtype": str(original_dtype),
-                "final_dtype": str(processed_df[col].dtype),
-                "nan_values_filled": int(nan_count),
-                "sample_values": processed_df[col].head(3).tolist()
-            }
-            
-            logger.info(f"[UNIFIED PROCESSOR] ✅ '{col}': {original_dtype} → {processed_df[col].dtype} ({nan_count} NaN preenchidos)")
+            try:
+                # Converter para string primeiro para limpar formatação
+                processed_df[col] = processed_df[col].astype(str)
+                
+                # Limpar formatação brasileira/internacional
+                processed_df[col] = processed_df[col].str.replace('R$', '', regex=False)
+                processed_df[col] = processed_df[col].str.replace('$', '', regex=False)
+                processed_df[col] = processed_df[col].str.replace('.', '', regex=False)  # Separador milhares
+                processed_df[col] = processed_df[col].str.replace(',', '.', regex=False)  # Decimal brasileiro
+                processed_df[col] = processed_df[col].str.strip()
+                
+                # Converter para numérico (CRÍTICO: errors='coerce' para limpar dados ruins)
+                original_dtype = processed_df[col].dtype
+                processed_df[col] = pd.to_numeric(processed_df[col], errors='coerce')
+                
+                # Verificar se a conversão foi bem-sucedida (pelo menos 50% dos valores convertidos)
+                valid_count = processed_df[col].notna().sum()
+                total_count = len(processed_df)
+                success_rate = (valid_count / total_count) * 100 if total_count > 0 else 0
+                
+                if success_rate < 50:
+                    logger.warning(f"[UNIFIED PROCESSOR] ⚠️ '{col}': Conversão falhou ({success_rate:.1f}% válidos). Revertendo.")
+                    # Reverter para tipo original
+                    processed_df[col] = df[col].copy()
+                    continue
+                
+                # Preencher NaN com 0 para cálculos financeiros
+                nan_count = processed_df[col].isna().sum()
+                processed_df[col] = processed_df[col].fillna(0)
+                
+                metadata["columns_processed"][col] = {
+                    "type": "financial_numeric",
+                    "original_dtype": str(original_dtype),
+                    "final_dtype": str(processed_df[col].dtype),
+                    "nan_values_filled": int(nan_count),
+                    "conversion_success_rate": float(success_rate),
+                    "sample_values": processed_df[col].head(3).tolist()
+                }
+                
+                logger.info(f"[UNIFIED PROCESSOR] ✅ '{col}': Convertida com sucesso ({success_rate:.1f}% válidos, {nan_count} NaN preenchidos)")
+                
+            except Exception as e:
+                logger.error(f"[UNIFIED PROCESSOR] ❌ Erro ao processar '{col}': {e}")
+                # Reverter para tipo original em caso de erro
+                processed_df[col] = df[col].copy()
     
     # 🔧 CORREÇÃO CRÍTICA 2: Forçar tipagem explícita de colunas temporais
     date_columns = ['Data', 'Date', 'data', 'date']
@@ -204,8 +231,18 @@ def process_dataframe_unified(df: pd.DataFrame, source_info: str = "unknown") ->
                 receita_col = col
     
     if quantidade_col and receita_col:
-        total_quantidade = processed_df[quantidade_col].sum()
-        total_receita = processed_df[receita_col].sum()
+        # Garantir que as colunas são numéricas antes de somar
+        if pd.api.types.is_numeric_dtype(processed_df[quantidade_col]):
+            total_quantidade = processed_df[quantidade_col].sum()
+        else:
+            total_quantidade = 0
+            logger.warning(f"[UNIFIED PROCESSOR] ⚠️ Coluna '{quantidade_col}' não é numérica, usando 0")
+        
+        if pd.api.types.is_numeric_dtype(processed_df[receita_col]):
+            total_receita = processed_df[receita_col].sum()
+        else:
+            total_receita = 0
+            logger.warning(f"[UNIFIED PROCESSOR] ⚠️ Coluna '{receita_col}' não é numérica, usando 0")
         
         metadata["financial_summary"] = {
             "quantidade_column": quantidade_col,

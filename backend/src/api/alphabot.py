@@ -126,13 +126,23 @@ def upload():
                 source_info="AlphaBot_Upload"
             )
             print(f"[AlphaBot Upload] ✅ Processamento unificado concluído: {len(consolidated_df)} linhas")
+        except ValueError as val_error:
+            # Erro específico de conversão de valores
+            print(f"[AlphaBot Upload] ❌ Erro de validação de dados: {val_error}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                "status": "error",
+                "message": f"Erro ao processar dados: {str(val_error)}. Verifique se os dados numéricos estão formatados corretamente."
+            }), 400
         except Exception as proc_error:
+            # Outros erros de processamento
             print(f"[AlphaBot Upload] ❌ Erro no processamento unificado: {proc_error}")
             import traceback
             traceback.print_exc()
             return jsonify({
                 "status": "error",
-                "message": f"Erro ao processar dados: {str(proc_error)}"
+                "message": f"Erro interno ao processar dados: {str(proc_error)}"
             }), 500
         
         # Construir chave composta (isolamento por usuário)
@@ -310,25 +320,37 @@ def chat():
             try:
                 existing = database.get_alphabot_conversation(conversation_id)
                 if not existing:
-                    database.create_alphabot_conversation(
+                    conv_created = database.create_alphabot_conversation(
                         conversation_id=conversation_id,
                         session_id=session_id,
                         user_id=int(user_id),
                         title=f"Chat AlphaBot - {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}"
                     )
-                    print(f"[AlphaBot Chat] ✅ Nova conversa criada: {conversation_id}")
+                    if conv_created:
+                        print(f"[AlphaBot Chat] ✅ Nova conversa criada: {conversation_id}")
+                    else:
+                        print(f"[AlphaBot Chat] ⚠️ Falha ao criar conversa: {conversation_id}")
                 
-                database.add_alphabot_message(
+                msg_saved = database.add_alphabot_message(
                     conversation_id=conversation_id,
                     author='user',
                     text=message,
                     time=int(pd.Timestamp.now().timestamp() * 1000)
                 )
-                print(f"[AlphaBot Chat] ✅ Mensagem do usuário salva: {conversation_id}")
+                if msg_saved:
+                    print(f"[AlphaBot Chat] ✅ Mensagem do usuário salva: {conversation_id}")
+                else:
+                    print(f"[AlphaBot Chat] ⚠️ Falha ao salvar mensagem de usuário: {conversation_id}")
             except Exception as e:
-                print(f"[AlphaBot Chat] ❌ Falha ao salvar mensagem de usuário: {e}")
+                print(f"[AlphaBot Chat] ❌ Erro ao salvar mensagem de usuário: {e}")
                 import traceback
                 traceback.print_exc()
+        elif conversation_id:
+            # conversation_id fornecido mas sem user_id
+            print(f"[AlphaBot Chat] ⚠️ conversation_id fornecido sem user_id - mensagem NÃO será persistida")
+        else:
+            # Sem conversation_id
+            print(f"[AlphaBot Chat] ⚠️ conversation_id não fornecido - mensagem NÃO será persistida")
 
         # Criar serviço de IA
         ai_service = get_ai_service('alphabot')
@@ -373,18 +395,24 @@ Apresente APENAS a resposta final do Júri ao usuário.
         # Persistir resposta do bot
         if conversation_id and user_id:
             try:
-                # ATENÇÃO: schema aceita apenas 'user' ou 'bot'
-                database.add_alphabot_message(
+                msg_saved = database.add_alphabot_message(
                     conversation_id=conversation_id,
                     author='bot',
                     text=answer,
                     time=int(pd.Timestamp.now().timestamp() * 1000)
                 )
-                print(f"[AlphaBot Chat] ✅ Resposta do bot salva: {conversation_id}")
+                if msg_saved:
+                    print(f"[AlphaBot Chat] ✅ Resposta do bot salva: {conversation_id}")
+                else:
+                    print(f"[AlphaBot Chat] ⚠️ Falha ao salvar resposta do bot: {conversation_id}")
             except Exception as e:
-                print(f"[AlphaBot Chat] ❌ Falha ao salvar resposta do bot: {e}")
+                print(f"[AlphaBot Chat] ❌ Erro ao salvar resposta do bot: {e}")
                 import traceback
                 traceback.print_exc()
+        elif conversation_id:
+            print(f"[AlphaBot Chat] ⚠️ conversation_id fornecido sem user_id - resposta NÃO será persistida")
+        else:
+            print(f"[AlphaBot Chat] ⚠️ conversation_id não fornecido - resposta NÃO será persistida")
         
         return jsonify({
             "answer": answer,
