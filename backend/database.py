@@ -80,13 +80,61 @@ def init_database():
         )
     ''')
     
-    # Índices para otimizar buscas
+    # Tabelas exclusivas do AlphaBot (persistência completa)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS alphabot_sessions (
+            id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            dataframe_json TEXT NOT NULL,
+            metadata_json TEXT NOT NULL,
+            files_info TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    ''')
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS alphabot_conversations (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES alphabot_sessions(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    ''')
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS alphabot_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id TEXT NOT NULL,
+            author TEXT NOT NULL CHECK (author IN ('user', 'bot')),
+            text TEXT NOT NULL,
+            time INTEGER NOT NULL,
+            chart_data TEXT,
+            suggestions TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (conversation_id) REFERENCES alphabot_conversations(id) ON DELETE CASCADE
+        )
+    ''')
+
+    # Índices para otimizar buscas (sistema original)
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id)')
     
+    # Índices para tabelas AlphaBot
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_alphabot_sessions_user_id ON alphabot_sessions(user_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_alphabot_conversations_session_id ON alphabot_conversations(session_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_alphabot_conversations_user_id ON alphabot_conversations(user_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_alphabot_messages_conversation_id ON alphabot_messages(conversation_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_alphabot_messages_time ON alphabot_messages(time)')
+    
     conn.commit()
     conn.close()
-    print("✅ Banco de dados inicializado com sucesso!")
+    print("✅ Banco de dados inicializado com sucesso (incluindo tabelas AlphaBot exclusivas)!")
 
 
 # ========================================
@@ -417,7 +465,7 @@ def search_conversations(user_id: int, query: str) -> List[Dict[str, Any]]:
 
 
 # ========================================
-# ALPHABOT DATA PERSISTENCE
+# ALPHABOT DATA PERSISTENCE (SISTEMA EXCLUSIVO)
 # ========================================
 
 def save_alphabot_data(user_id: int, dataframe_json: str, metadata: Dict[str, Any]) -> bool:
@@ -511,6 +559,261 @@ def clear_alphabot_data(user_id: int) -> bool:
             
     except Exception as e:
         print(f"❌ Erro ao remover dados do AlphaBot: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+# ========================================
+# ALPHABOT SESSIONS E CONVERSATIONS (SISTEMA EXCLUSIVO)
+# ========================================
+
+def create_alphabot_session(user_id: int, session_id: str, dataframe_json: str, metadata: Dict[str, Any], files_info: List[str]) -> bool:
+    """
+    Cria uma nova sessão do AlphaBot com dados persistentes.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            INSERT INTO alphabot_sessions (id, user_id, dataframe_json, metadata_json, files_info, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (
+            session_id,
+            user_id,
+            dataframe_json,
+            json.dumps(metadata),
+            json.dumps(files_info),
+            datetime.now().isoformat()
+        ))
+        conn.commit()
+        print(f"✅ Sessão AlphaBot criada: {session_id} para usuário {user_id}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Erro ao criar sessão AlphaBot: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_alphabot_session(user_id: int, session_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Recupera dados de uma sessão específica do AlphaBot.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            SELECT dataframe_json, metadata_json, files_info, created_at, updated_at
+            FROM alphabot_sessions 
+            WHERE id = ? AND user_id = ?
+        ''', (session_id, user_id))
+        
+        row = cursor.fetchone()
+        if row:
+            return {
+                'dataframe': row['dataframe_json'],
+                'metadata': json.loads(row['metadata_json']),
+                'files_info': json.loads(row['files_info']),
+                'created_at': row['created_at'],
+                'updated_at': row['updated_at']
+            }
+        return None
+        
+    except Exception as e:
+        print(f"❌ Erro ao recuperar sessão AlphaBot: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def get_user_alphabot_sessions(user_id: int) -> List[Dict[str, Any]]:
+    """
+    Lista todas as sessões do AlphaBot de um usuário.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            SELECT id, metadata_json, files_info, created_at, updated_at
+            FROM alphabot_sessions 
+            WHERE user_id = ?
+            ORDER BY updated_at DESC
+        ''', (user_id,))
+        
+        rows = cursor.fetchall()
+        sessions = []
+        for row in rows:
+            metadata = json.loads(row['metadata_json'])
+            sessions.append({
+                'session_id': row['id'],
+                'files_info': json.loads(row['files_info']),
+                'total_records': metadata.get('total_records', 0),
+                'total_columns': metadata.get('total_columns', 0),
+                'created_at': row['created_at'],
+                'updated_at': row['updated_at']
+            })
+        return sessions
+        
+    except Exception as e:
+        print(f"❌ Erro ao listar sessões AlphaBot: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def create_alphabot_conversation(conversation_id: str, session_id: str, user_id: int, title: str) -> bool:
+    """
+    Cria uma nova conversa do AlphaBot associada a uma sessão.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            INSERT INTO alphabot_conversations (id, session_id, user_id, title, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (conversation_id, session_id, user_id, title, datetime.now().isoformat()))
+        conn.commit()
+        print(f"✅ Conversa AlphaBot criada: {conversation_id}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Erro ao criar conversa AlphaBot: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def add_alphabot_message(conversation_id: str, author: str, text: str, time: int, chart_data: Optional[str] = None, suggestions: Optional[List[str]] = None) -> bool:
+    """
+    Adiciona uma mensagem à conversa do AlphaBot.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            INSERT INTO alphabot_messages (conversation_id, author, text, time, chart_data, suggestions)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (
+            conversation_id,
+            author,
+            text,
+            time,
+            chart_data,
+            json.dumps(suggestions) if suggestions else None
+        ))
+        conn.commit()
+        return True
+        
+    except Exception as e:
+        print(f"❌ Erro ao adicionar mensagem AlphaBot: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_alphabot_conversation_messages(conversation_id: str) -> List[Dict[str, Any]]:
+    """
+    Recupera todas as mensagens de uma conversa do AlphaBot.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            SELECT author, text, time, chart_data, suggestions
+            FROM alphabot_messages 
+            WHERE conversation_id = ?
+            ORDER BY time ASC
+        ''', (conversation_id,))
+        
+        rows = cursor.fetchall()
+        messages = []
+        for row in rows:
+            message = {
+                'author': row['author'],
+                'text': row['text'],
+                'time': row['time'],
+                'chart_data': row['chart_data'],
+                'suggestions': json.loads(row['suggestions']) if row['suggestions'] else None
+            }
+            messages.append(message)
+        return messages
+        
+    except Exception as e:
+        print(f"❌ Erro ao recuperar mensagens AlphaBot: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def get_user_alphabot_conversations(user_id: int) -> List[Dict[str, Any]]:
+    """
+    Lista todas as conversas do AlphaBot de um usuário.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            SELECT ac.id, ac.session_id, ac.title, ac.created_at, ac.updated_at,
+                   COUNT(am.id) as message_count
+            FROM alphabot_conversations ac
+            LEFT JOIN alphabot_messages am ON ac.id = am.conversation_id
+            WHERE ac.user_id = ?
+            GROUP BY ac.id, ac.session_id, ac.title, ac.created_at, ac.updated_at
+            ORDER BY ac.updated_at DESC
+        ''', (user_id,))
+        
+        rows = cursor.fetchall()
+        conversations = []
+        for row in rows:
+            conversations.append({
+                'conversation_id': row['id'],
+                'session_id': row['session_id'],
+                'title': row['title'],
+                'message_count': row['message_count'],
+                'created_at': row['created_at'],
+                'updated_at': row['updated_at']
+            })
+        return conversations
+        
+    except Exception as e:
+        print(f"❌ Erro ao listar conversas AlphaBot: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def delete_alphabot_session(user_id: int, session_id: str) -> bool:
+    """
+    Remove uma sessão do AlphaBot e todas as conversas/mensagens associadas.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            DELETE FROM alphabot_sessions 
+            WHERE id = ? AND user_id = ?
+        ''', (session_id, user_id))
+        conn.commit()
+        
+        if cursor.rowcount > 0:
+            print(f"✅ Sessão AlphaBot removida: {session_id}")
+            return True
+        else:
+            print(f"⚠️ Sessão não encontrada: {session_id}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Erro ao remover sessão AlphaBot: {e}")
         return False
     finally:
         conn.close()

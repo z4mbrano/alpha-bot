@@ -3384,16 +3384,24 @@ def alphabot_upload():
         # CORREÇÃO: Serializar DataFrame para JSON
         dataframe_json = consolidated_df.to_json(orient='split', date_format='iso')
         
+        # Gerar ID de sessão único
+        session_id = str(uuid.uuid4())
+        
         if user_id:
-            # NOVA FUNCIONALIDADE: Salvar dados no banco de dados (persistente)
-            success = database.save_alphabot_data(int(user_id), dataframe_json, metadata)
+            # SISTEMA DE PERSISTÊNCIA EXCLUSIVO ALPHABOT
+            success = database.create_alphabot_session(
+                user_id=int(user_id),
+                session_id=session_id,
+                dataframe_json=dataframe_json,
+                metadata=metadata,
+                files_info=files_success
+            )
             if success:
-                print(f"[AlphaBot Upload] ✅ Dados salvos no banco para usuário {user_id}")
+                print(f"[AlphaBot Upload] ✅ Sessão persistente criada: {session_id} para usuário {user_id}")
             else:
-                print(f"[AlphaBot Upload] ⚠️ Falha ao salvar no banco para usuário {user_id}")
+                print(f"[AlphaBot Upload] ⚠️ Falha ao criar sessão persistente para usuário {user_id}")
         
         # FALLBACK: Manter sistema de sessões em memória para compatibilidade/usuários não autenticados
-        session_id = str(uuid.uuid4())
         session_key = f"{user_id}_{session_id}" if user_id else session_id
         
         print(f"[AlphaBot Upload] Criando sessão fallback com chave: {session_key}")
@@ -3861,23 +3869,23 @@ def alphabot_chat():
             
             return jsonify(cached_response)
         
-        # NOVA FUNCIONALIDADE: Carregar dados do banco primeiro (persistente)
+        # SISTEMA DE PERSISTÊNCIA EXCLUSIVO ALPHABOT
         df = None
         metadata = None
         
-        if user_id:
-            print(f"[AlphaBot Chat] Tentando carregar dados do banco para usuário {user_id}")
-            alphabot_data = database.load_alphabot_data(int(user_id))
+        if user_id and session_id:
+            print(f"[AlphaBot Chat] Tentando carregar sessão persistente: {session_id} para usuário {user_id}")
+            session_data = database.get_alphabot_session(int(user_id), session_id)
             
-            if alphabot_data:
+            if session_data:
                 try:
-                    df = pd.read_json(io.StringIO(alphabot_data["dataframe"]), orient='split')
-                    metadata = alphabot_data["metadata"]
-                    print(f"[AlphaBot Chat] ✅ Dados carregados do banco: {len(df)} linhas")
+                    df = pd.read_json(io.StringIO(session_data["dataframe"]), orient='split')
+                    metadata = session_data["metadata"]
+                    print(f"[AlphaBot Chat] ✅ Dados carregados da sessão persistente: {len(df)} linhas")
                 except Exception as e:
-                    print(f"[AlphaBot Chat] ❌ Erro ao deserializar dados do banco: {e}")
+                    print(f"[AlphaBot Chat] ❌ Erro ao deserializar dados da sessão persistente: {e}")
         
-        # FALLBACK: Tentar sistema de sessões em memória se não carregou do banco
+        # FALLBACK: Tentar sistema de sessões em memória se não carregou da sessão persistente
         if df is None:
             print(f"[AlphaBot Chat] Tentando carregar dados da sessão em memória")
             
@@ -4002,20 +4010,21 @@ Apresente APENAS a resposta final do Júri ao usuário.
         # 🚀 ARMAZENAR NO CACHE (SPRINT 1)
         set_cached_response(session_id, message, response_data)
         
-        # 🆕 MULTI-USUÁRIO: Salvar resposta do bot no banco
+        # SISTEMA DE PERSISTÊNCIA EXCLUSIVO ALPHABOT: Salvar resposta do bot
         if conversation_id and user_id:
             try:
-                database.add_message(
+                # Usar sistema exclusivo AlphaBot
+                database.add_alphabot_message(
                     conversation_id=conversation_id,
-                    author='alphabot',
+                    author='bot',
                     text=answer,
                     time=int(datetime.now().timestamp() * 1000),
-                    chart_data=chart_data,
+                    chart_data=json.dumps(chart_data) if chart_data else None,
                     suggestions=suggestions
                 )
-                print(f"✅ Mensagem salva na conversa {conversation_id}")
+                print(f"✅ Resposta do AlphaBot salva na conversa {conversation_id}")
             except Exception as db_error:
-                print(f"⚠️ Erro ao salvar resposta do bot: {db_error}")
+                print(f"⚠️ Erro ao salvar resposta do AlphaBot: {db_error}")
         
         return jsonify(response_data), 200
         
@@ -4236,18 +4245,19 @@ def chat():
         if not bot_id or not message:
             return jsonify({"error": "bot_id e message são obrigatórios"}), 400
         
-        # 🆕 MULTI-USUÁRIO: Salvar mensagem do usuário no banco
+        # SISTEMA DE PERSISTÊNCIA EXCLUSIVO ALPHABOT: Salvar mensagem do usuário
         if conversation_id and user_id:
             try:
-                database.add_message(
+                # Usar sistema exclusivo AlphaBot
+                database.add_alphabot_message(
                     conversation_id=conversation_id,
                     author='user',
                     text=message,
                     time=int(datetime.now().timestamp() * 1000)
                 )
-                print(f"✅ Mensagem do usuário salva na conversa {conversation_id}")
+                print(f"✅ Mensagem do usuário salva na conversa AlphaBot {conversation_id}")
             except Exception as db_error:
-                print(f"⚠️ Erro ao salvar mensagem do usuário: {db_error}")
+                print(f"⚠️ Erro ao salvar mensagem do usuário no AlphaBot: {db_error}")
             
         # Gerar resposta do bot
         result = get_bot_response(bot_id, message, conversation_id)
@@ -4294,6 +4304,118 @@ def alphabot_clear_data():
             }), 200
         else:
             return jsonify({"error": "Falha ao remover dados"}), 500
+            
+    except Exception as e:
+        return jsonify({"error": f"Erro interno: {str(e)}"}), 500
+
+
+@app.route('/api/alphabot/sessions', methods=['GET'])
+def alphabot_get_sessions():
+    """Lista todas as sessões do AlphaBot de um usuário"""
+    try:
+        user_id = request.args.get('user_id', type=int)
+        
+        if not user_id:
+            return jsonify({"error": "user_id é obrigatório"}), 400
+        
+        sessions = database.get_user_alphabot_sessions(user_id)
+        
+        return jsonify({
+            "success": True,
+            "sessions": sessions
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Erro interno: {str(e)}"}), 500
+
+
+@app.route('/api/alphabot/conversations', methods=['GET'])
+def alphabot_get_conversations():
+    """Lista todas as conversas do AlphaBot de um usuário"""
+    try:
+        user_id = request.args.get('user_id', type=int)
+        
+        if not user_id:
+            return jsonify({"error": "user_id é obrigatório"}), 400
+        
+        conversations = database.get_user_alphabot_conversations(user_id)
+        
+        return jsonify({
+            "success": True,
+            "conversations": conversations
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Erro interno: {str(e)}"}), 500
+
+
+@app.route('/api/alphabot/conversations/<conversation_id>/messages', methods=['GET'])
+def alphabot_get_conversation_messages(conversation_id):
+    """Recupera mensagens de uma conversa específica do AlphaBot"""
+    try:
+        messages = database.get_alphabot_conversation_messages(conversation_id)
+        
+        return jsonify({
+            "success": True,
+            "messages": messages
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Erro interno: {str(e)}"}), 500
+
+
+@app.route('/api/alphabot/conversations', methods=['POST'])
+def alphabot_create_conversation():
+    """Cria uma nova conversa do AlphaBot"""
+    try:
+        data = request.get_json()
+        
+        conversation_id = data.get('conversation_id')
+        session_id = data.get('session_id')
+        user_id = data.get('user_id')
+        title = data.get('title', 'Nova Análise AlphaBot')
+        
+        if not all([conversation_id, session_id, user_id]):
+            return jsonify({"error": "conversation_id, session_id e user_id são obrigatórios"}), 400
+        
+        success = database.create_alphabot_conversation(
+            conversation_id=conversation_id,
+            session_id=session_id,
+            user_id=user_id,
+            title=title
+        )
+        
+        if success:
+            return jsonify({
+                "success": True,
+                "conversation_id": conversation_id,
+                "message": "Conversa criada com sucesso"
+            }), 201
+        else:
+            return jsonify({"error": "Falha ao criar conversa"}), 500
+            
+    except Exception as e:
+        return jsonify({"error": f"Erro interno: {str(e)}"}), 500
+
+
+@app.route('/api/alphabot/sessions/<session_id>', methods=['DELETE'])
+def alphabot_delete_session(session_id):
+    """Remove uma sessão do AlphaBot e todas as conversas associadas"""
+    try:
+        user_id = request.args.get('user_id', type=int)
+        
+        if not user_id:
+            return jsonify({"error": "user_id é obrigatório"}), 400
+        
+        success = database.delete_alphabot_session(user_id, session_id)
+        
+        if success:
+            return jsonify({
+                "success": True,
+                "message": "Sessão removida com sucesso"
+            }), 200
+        else:
+            return jsonify({"error": "Sessão não encontrada"}), 404
             
     except Exception as e:
         return jsonify({"error": f"Erro interno: {str(e)}"}), 500
