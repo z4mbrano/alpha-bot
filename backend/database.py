@@ -722,6 +722,43 @@ def get_alphabot_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
+def find_or_create_alphabot_conversation_for_session(user_id: int, session_id: str, title: Optional[str] = None) -> Optional[str]:
+    """
+    Retorna o ID de uma conversa existente para a sessão do AlphaBot (user_id + session_id)
+    ou cria uma nova se não existir.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('''
+            SELECT id FROM alphabot_conversations
+            WHERE user_id = ? AND session_id = ?
+            ORDER BY updated_at DESC LIMIT 1
+        ''', (user_id, session_id))
+        row = cursor.fetchone()
+        if row:
+            return row['id']
+
+        # Criar nova conversa
+        from datetime import datetime as _dt
+        import secrets as _secrets
+        conversation_id = _secrets.token_urlsafe(16)
+        conv_title = title or f"Chat AlphaBot - {_dt.now().strftime('%d/%m/%Y %H:%M')}"
+        cursor.execute('''
+            INSERT INTO alphabot_conversations (id, session_id, user_id, title, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (conversation_id, session_id, user_id, conv_title, _dt.now().isoformat()))
+        conn.commit()
+        return conversation_id
+
+    except Exception as e:
+        print(f"❌ Erro em find_or_create_alphabot_conversation_for_session: {e}")
+        return None
+    finally:
+        conn.close()
+
+
 def add_alphabot_message(conversation_id: str, author: str, text: str, time: int, chart_data: Optional[str] = None, suggestions: Optional[List[str]] = None) -> bool:
     """
     Adiciona uma mensagem à conversa do AlphaBot.

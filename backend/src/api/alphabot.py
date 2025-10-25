@@ -347,6 +347,18 @@ def chat():
         # Preparar preview dos dados (primeiras 5 linhas)
         data_preview = df.head(5).to_markdown(index=False)
         
+        # Garantir conversation_id quando user_id foi informado (auto-criar se necessário)
+        if user_id and not conversation_id:
+            try:
+                auto_title = f"Chat AlphaBot - {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}"
+                conversation_id = database.find_or_create_alphabot_conversation_for_session(int(user_id), session_id, auto_title)
+                if conversation_id:
+                    print(f"[AlphaBot Chat] ✅ Conversa pronta: {conversation_id}")
+                else:
+                    print(f"[AlphaBot Chat] ⚠️ Não foi possível criar/obter conversa para user_id={user_id} session_id={session_id}")
+            except Exception as e:
+                print(f"[AlphaBot Chat] ❌ Erro ao preparar conversa: {e}")
+
         # Persistir mensagem do usuário no histórico, garantindo conversa
         if conversation_id and user_id:
             try:
@@ -384,11 +396,95 @@ def chat():
             # Sem conversation_id
             print(f"[AlphaBot Chat] ⚠️ conversation_id não fornecido - mensagem NÃO será persistida")
 
-        # Criar serviço de IA
-        ai_service = get_ai_service('alphabot')
-        
-        # PROMPT do motor de validação (Analista → Crítico → Júri)
-        validation_prompt = f"""
+        # Cálculo determinístico para perguntas de faturamento (evita alucinações)
+        computed_answer = None
+        try:
+            import re
+            # Detectar ano solicitado na pergunta (fallback: maior ano disponível)
+            years_in_msg = re.findall(r"(19\d{2}|20\d{2})", message)
+            requested_year = int(years_in_msg[0]) if years_in_msg else None
+
+            # Detectar possíveis colunas base de data e seus derivados
+            date_cols = metadata.get('date_columns', []) if isinstance(metadata, dict) else []
+            base_date_col = date_cols[0] if date_cols else None
+            ano_col = f"{base_date_col}_Ano" if base_date_col and f"{base_date_col}_Ano" in df.columns else None
+            mes_col = f"{base_date_col}_Mes" if base_date_col and f"{base_date_col}_Mes" in df.columns else None
+            mes_nome_col = f"{base_date_col}_Mes_Nome" if base_date_col and f"{base_date_col}_Mes_Nome" in df.columns else None
+
+            # Identificar coluna de receita
+            receita_candidates = [c for c in df.columns if any(k in c.lower() for k in ['receita', 'faturamento'])]
+            if not receita_candidates:
+                receita_candidates = [c for c in df.columns if 'valor' in c.lower() or 'total' in c.lower()]
+            receita_col = None
+            for c in receita_candidates:
+                if pd.api.types.is_numeric_dtype(df[c]):
+                    receita_col = c
+                    break
+            # Fallback para receita derivada criada pelo processor
+            if not receita_col and 'Receita_Total_Derivada' in df.columns and pd.api.types.is_numeric_dtype(df['Receita_Total_Derivada']):
+                receita_col = 'Receita_Total_Derivada'
+
+            # Se necessário, tentar derivar receita a partir de quantidade x preço
+            if not receita_col:
+                qtd_col = next((c for c in df.columns if 'quantidade' in c.lower() and pd.api.types.is_numeric_dtype(df[c])), None)
+                preco_col = next((c for c in df.columns if any(k in c.lower() for k in ['preco', 'preço']) and pd.api.types.is_numeric_dtype(df[c])), None)
+                if qtd_col and preco_col:
+                    receita_col = '__tmp_receita__'
+                    df[receita_col] = df[qtd_col].fillna(0) * df[preco_col].fillna(0)
+
+            # Prosseguir apenas se houver receita numérica e algum indicador temporal
+            if receita_col and (ano_col or base_date_col in df.columns):
+                # Filtrar ano
+                if not requested_year and ano_col:
+                    # Escolher maior ano disponível
+                    try:
+                        requested_year = int(df[ano_col].dropna().max()) if not df[ano_col].dropna().empty else None
+                    except Exception:
+                        requested_year = None
+                if ano_col and requested_year:
+                    df_year = df[df[ano_col] == requested_year]
+                elif base_date_col in df.columns and pd.api.types.is_datetime64_any_dtype(df[base_date_col]):
+                    df_year = df[df[base_date_col].dt.year == requested_year] if requested_year else df
+                else:
+                    df_year = df
+
+                total_receita = float(df_year[receita_col].sum()) if not df_year.empty else 0.0
+
+                # Mensal
+                if mes_col and requested_year:
+                    grp = df_year.groupby([mes_col], dropna=True)[receita_col].sum().reset_index()
+                    grp = grp.sort_values(mes_col)
+                    mes_map = df[[mes_col, mes_nome_col]].dropna().drop_duplicates().set_index(mes_col)[mes_nome_col].to_dict() if mes_nome_col in df.columns else {}
+                    monthly = [(int(r[mes_col]), float(r[receita_col]), mes_map.get(int(r[mes_col]))) for _, r in grp.iterrows()]
+                else:
+                    monthly = []
+
+                # Formatar
+                def brl(v: float) -> str:
+                    return f"R$ {v:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+
+                lines = []
+                if requested_year:
+                    lines.append(f"A fatura total do ano de {requested_year} é de {brl(total_receita)}.")
+                else:
+                    lines.append(f"A fatura total encontrada é de {brl(total_receita)}.")
+
+                if monthly:
+                    lines.append("\nDistribuição mensal:")
+                    for m, val, nome in monthly:
+                        label = nome.lower() if isinstance(nome, str) else str(m)
+                        lines.append(f"- {label}: {brl(val)}")
+
+                computed_answer = "\n".join(lines)
+        except Exception as e:
+            print(f"[AlphaBot Chat] ⚠️ Falha no cálculo determinístico: {e}")
+
+        if computed_answer:
+            answer = computed_answer
+        else:
+            # Criar serviço de IA e usar fallback com contexto/preview
+            ai_service = get_ai_service('alphabot')
+            validation_prompt = f"""
 {data_context}
 
 **Preview dos Dados (5 primeiras linhas):**
@@ -398,31 +494,9 @@ def chat():
 
 **Pergunta do Usuário:** {message}
 
-**INSTRUÇÕES INTERNAS (NÃO MOSTRE ISSO AO USUÁRIO):**
-
-Simule internamente o processo de deliberação:
-
-1. **ANALISTA** - Execute a análise técnica nos dados:
-   - Identifique quais colunas usar
-   - Execute filtros, agregações, rankings necessários
-   - Formule uma resposta preliminar baseada nos dados
-
-2. **CRÍTICO** - Desafie a análise:
-   - Há vieses ou suposições não validadas?
-   - Faltam dados importantes para esta análise?
-   - Há interpretações alternativas?
-   
-3. **JÚRI** - Sintetize a resposta final no formato:
-   - **Resposta Direta:** [Uma frase clara]
-   - **Análise Detalhada:** [Como chegou ao resultado]
-   - **Insights Adicionais:** [Observações valiosas]
-   - **Limitações e Contexto:** [Se aplicável]
-
-Apresente APENAS a resposta final do Júri ao usuário.
+Responda apenas com base nos dados; se a pergunta exigir somas/contagens fora do preview, explique a limitação e peça para rodar "calcular faturamento {pd.Timestamp.now().year}".
 """
-        
-        # Gerar resposta
-        answer = ai_service.generate_response(validation_prompt)
+            answer = ai_service.generate_response(validation_prompt)
 
         # Persistir resposta do bot
         if conversation_id and user_id:
@@ -446,14 +520,18 @@ Apresente APENAS a resposta final do Júri ao usuário.
         else:
             print(f"[AlphaBot Chat] ⚠️ conversation_id não fornecido - resposta NÃO será persistida")
         
-        return jsonify({
+        resp_meta = {
+            "records_analyzed": len(df),
+            "columns_available": len(df.columns)
+        }
+        payload = {
             "answer": answer,
             "session_id": session_id,
-            "metadata": {
-                "records_analyzed": len(df),
-                "columns_available": len(df.columns)
-            }
-        }), 200
+            "metadata": resp_meta
+        }
+        if conversation_id:
+            payload["conversation_id"] = conversation_id
+        return jsonify(payload), 200
         
     except Exception as e:
         return jsonify({

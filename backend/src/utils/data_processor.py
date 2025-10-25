@@ -50,7 +50,7 @@ def process_dataframe_unified(df: pd.DataFrame, source_info: str = "unknown") ->
     
     # 🔧 CORREÇÃO CRÍTICA 1: Palavras-chave para identificar colunas financeiras
     financial_keywords = [
-        'quantidade', 'receita', 'valor', 'preco', 'preço', 'faturamento', 
+        'quantidade', 'receita', 'receita_total', 'valor', 'preco', 'preço', 'preco_unitario', 'preço_unitário', 'faturamento', 
         'total', 'vendas', 'custo', 'lucro', 'margem', 'desconto'
     ]
     
@@ -130,8 +130,11 @@ def process_dataframe_unified(df: pd.DataFrame, source_info: str = "unknown") ->
                 total_count = len(processed_df)
                 success_rate = (valid_count / total_count) * 100 if total_count > 0 else 0
                 
-                if success_rate < 80:
-                    logger.warning(f"[UNIFIED PROCESSOR] ⚠️ '{col}': Conversão numérica com baixa taxa de sucesso ({success_rate:.1f}% válidos). Mantendo como texto.")
+                # Para colunas claramente financeiras (receita/valor/preço/faturamento), forçar conversão mesmo com taxa menor
+                force_financial = any(key in col_norm for key in ['receita', 'valor', 'preco', 'preço', 'faturamento'])
+                threshold_ok = success_rate >= 80 or force_financial and success_rate >= 30
+                if not threshold_ok:
+                    logger.warning(f"[UNIFIED PROCESSOR] ⚠️ '{col}': Conversão com baixa taxa de sucesso ({success_rate:.1f}% válidos). Mantendo como texto.")
                     # Reverter para tipo original
                     continue
                 
@@ -268,6 +271,23 @@ def process_dataframe_unified(df: pd.DataFrame, source_info: str = "unknown") ->
             if receita_col is None:  # Pegar a primeira encontrada
                 receita_col = col
     
+    # Se não existir 'receita' numérica mas existir quantidade e preço unitário, calcular receita total derivada
+    if receita_col is None or not pd.api.types.is_numeric_dtype(processed_df.get(receita_col, pd.Series(dtype=float))):
+        preco_cols = [c for c in processed_df.columns if any(term in c.lower() for term in ['preco', 'preço'])]
+        preco_col = None
+        for c in preco_cols:
+            if pd.api.types.is_numeric_dtype(processed_df[c]):
+                preco_col = c
+                break
+        if quantidade_col and preco_col:
+            derived_col = 'Receita_Total_Derivada'
+            try:
+                processed_df[derived_col] = processed_df[quantidade_col].fillna(0) * processed_df[preco_col].fillna(0)
+                receita_col = derived_col
+                logger.info(f"[UNIFIED PROCESSOR] ✅ Receita derivada criada a partir de '{quantidade_col}' x '{preco_col}'")
+            except Exception as e:
+                logger.warning(f"[UNIFIED PROCESSOR] ⚠️ Falha ao criar receita derivada: {e}")
+
     if quantidade_col and receita_col:
         # Garantir que as colunas são numéricas antes de somar
         if pd.api.types.is_numeric_dtype(processed_df[quantidade_col]):
