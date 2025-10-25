@@ -80,12 +80,46 @@ class AIService:
             },
         ]
         
-        return genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
-            generation_config=generation_config,
-            safety_settings=safety_settings,
-            system_instruction=self.system_prompt,
-        )
+        # Selecionar modelo por bot, com fallback seguro
+        preferred_models = []
+        if self.bot_type == 'alphabot':
+            # Pedido do usuário: usar Gemini 2.5 Flash para AlphaBot
+            preferred_models = [
+                "gemini-2.5-flash",
+                "gemini-2.0-flash",
+                "gemini-1.5-flash",
+            ]
+        else:
+            # DriveBot permanece estável para evitar mudanças inesperadas
+            preferred_models = [
+                "gemini-1.5-flash",
+                "gemini-2.0-flash",
+                "gemini-2.5-flash",
+            ]
+
+        last_error = None
+        for model_name in preferred_models:
+            try:
+                model = genai.GenerativeModel(
+                    model_name=model_name,
+                    generation_config=generation_config,
+                    safety_settings=safety_settings,
+                    system_instruction=self.system_prompt,
+                )
+                # Tentativa leve: contar tokens de uma string curta para validar compatibilidade
+                try:
+                    _ = model.count_tokens("ping")
+                except Exception:
+                    # Mesmo que count falhe em versões antigas, ainda tentaremos usar o modelo
+                    pass
+                print(f"[AIService] ✅ Modelo configurado para {self.bot_type}: {model_name}")
+                return model
+            except Exception as e:
+                last_error = e
+                print(f"[AIService] ⚠️ Falha ao configurar modelo {model_name} para {self.bot_type}: {e}")
+
+        # Se todos falharem, propagar erro com contexto
+        raise RuntimeError(f"Não foi possível configurar nenhum modelo válido para {self.bot_type}. Último erro: {last_error}")
     
     def generate_response(
         self,
