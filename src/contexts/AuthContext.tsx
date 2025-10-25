@@ -76,10 +76,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await response.json()
 
       if (response.ok && data.success) {
-        const userData = data.user
-        setUser(userData)
-        localStorage.setItem('alpha_user', JSON.stringify(userData))
-        toast.success(`Conta criada com sucesso! Bem-vindo, ${userData.username}! 🎉`)
+        // Não realizar login automático após registro para evitar fluxo incorreto
+        toast.success('Conta criada com sucesso! Faça login para continuar. ✅')
         return true
       } else {
         toast.error(data.error || 'Erro ao criar conta')
