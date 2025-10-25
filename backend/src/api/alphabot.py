@@ -14,10 +14,10 @@ from typing import Dict, Any
 from flask import Blueprint, request, jsonify
 import pandas as pd
 
-from ..services import get_ai_service, get_data_analyzer
-from ..utils import allowed_file, ALLOWED_EXTENSIONS
-from ..utils.data_processor import process_dataframe_unified
-from ... import database
+from src.services import get_ai_service, get_data_analyzer
+from src.utils import allowed_file, ALLOWED_EXTENSIONS
+from src.utils.data_processor import process_dataframe_unified
+import database
 
 
 # Criar blueprint

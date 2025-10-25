@@ -21,19 +21,10 @@ from dotenv import load_dotenv
 import database  # Sistema de banco de dados multi-usuário
 
 # Registrar blueprints modulares (AlphaBot/DriveBot/Health)
-try:
-    # PEP 420 permite namespace packages sem __init__.py
-    from backend.src.api import alphabot_bp, drivebot_bp, health_bp  # type: ignore
-except Exception:
-    # Fallback para execução local adicionando ao sys.path
-    import sys
-    sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
-    from api import alphabot as _alphabot  # type: ignore
-    from api import drivebot as _drivebot  # type: ignore
-    from api import health as _health  # type: ignore
-    alphabot_bp = _alphabot.alphabot_bp
-    drivebot_bp = _drivebot.drivebot_bp
-    health_bp = _health.health_bp
+# Executando a partir de /backend, importe diretamente de src.*
+from src.api.alphabot import alphabot_bp  # type: ignore
+from src.api.drivebot import drivebot_bp  # type: ignore
+from src.api.health import health_bp  # type: ignore
 
 # Carregar variáveis de ambiente
 load_dotenv()
