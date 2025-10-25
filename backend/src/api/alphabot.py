@@ -152,6 +152,7 @@ def upload():
         }
 
         # Persistir sessão no banco se user_id fornecido
+        created_conversation_id = None
         if user_id is not None:
             try:
                 success = database.create_alphabot_session(
@@ -168,6 +169,16 @@ def upload():
                 )
                 if success:
                     print(f"[AlphaBot Upload] ✅ Sessão persistida no banco para user_id={user_id}, session_id={session_id}")
+                    # Criar conversa inicial vinculada à sessão, para facilitar o chat
+                    created_conversation_id = str(uuid.uuid4())
+                    conv_title = f"Análise AlphaBot - {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}"
+                    conv_ok = database.create_alphabot_conversation(
+                        conversation_id=created_conversation_id,
+                        session_id=session_id,
+                        user_id=int(user_id),
+                        title=conv_title
+                    )
+                    print(f"[AlphaBot Upload] {'✅' if conv_ok else '⚠️'} Conversa inicial criada: {created_conversation_id}")
                 else:
                     print(f"[AlphaBot Upload] ⚠️ Falha ao criar sessão no banco (retornou False)")
             except Exception as e:
@@ -198,7 +209,7 @@ def upload():
                 pass
         
         # Retornar resposta de sucesso
-        return jsonify({
+        response_payload = {
             "status": "success",
             "message": f"{len(result['files_ok'])} arquivo(s) processado(s) com sucesso.",
             "session_id": session_id,
@@ -212,7 +223,10 @@ def upload():
                 "date_range": date_range,
                 "duplicates_removed": duplicates_removed
             }
-        }), 200
+        }
+        if created_conversation_id:
+            response_payload["conversation_id"] = created_conversation_id
+        return jsonify(response_payload), 200
         
     except Exception as e:
         return jsonify({
