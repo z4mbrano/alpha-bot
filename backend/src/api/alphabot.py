@@ -120,10 +120,20 @@ def upload():
         summary = analyzer.build_summary(result['files_ok'], result['files_failed'])
 
         # 🔧 Aplicar processamento UNIFICADO (corrige Quantidade/Receita/Data)
-        consolidated_df, processing_metadata = process_dataframe_unified(
-            consolidated_df,
-            source_info="AlphaBot_Upload"
-        )
+        try:
+            consolidated_df, processing_metadata = process_dataframe_unified(
+                consolidated_df,
+                source_info="AlphaBot_Upload"
+            )
+            print(f"[AlphaBot Upload] ✅ Processamento unificado concluído: {len(consolidated_df)} linhas")
+        except Exception as proc_error:
+            print(f"[AlphaBot Upload] ❌ Erro no processamento unificado: {proc_error}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                "status": "error",
+                "message": f"Erro ao processar dados: {str(proc_error)}"
+            }), 500
         
         # Construir chave composta (isolamento por usuário)
         session_key = f"{user_id}_{session_id}" if user_id else session_id
@@ -144,7 +154,7 @@ def upload():
         # Persistir sessão no banco se user_id fornecido
         if user_id is not None:
             try:
-                database.create_alphabot_session(
+                success = database.create_alphabot_session(
                     user_id=int(user_id),
                     session_id=session_id,
                     dataframe_json=consolidated_df.to_json(orient='split', date_format='iso'),
@@ -156,9 +166,14 @@ def upload():
                     },
                     files_info=result['files_ok']
                 )
-                print(f"[AlphaBot Upload] ✅ Sessão persistida no banco para user_id={user_id}")
+                if success:
+                    print(f"[AlphaBot Upload] ✅ Sessão persistida no banco para user_id={user_id}, session_id={session_id}")
+                else:
+                    print(f"[AlphaBot Upload] ⚠️ Falha ao criar sessão no banco (retornou False)")
             except Exception as e:
-                print(f"[AlphaBot Upload] ⚠️ Falha ao persistir sessão: {e}")
+                print(f"[AlphaBot Upload] ❌ Erro ao persistir sessão: {e}")
+                import traceback
+                traceback.print_exc()
         
         # Calcular período se houver colunas de data (após unificação)
         date_range = None
@@ -287,14 +302,19 @@ def chat():
                         user_id=int(user_id),
                         title=f"Chat AlphaBot - {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}"
                     )
+                    print(f"[AlphaBot Chat] ✅ Nova conversa criada: {conversation_id}")
+                
                 database.add_alphabot_message(
                     conversation_id=conversation_id,
                     author='user',
                     text=message,
                     time=int(pd.Timestamp.now().timestamp() * 1000)
                 )
+                print(f"[AlphaBot Chat] ✅ Mensagem do usuário salva: {conversation_id}")
             except Exception as e:
-                print(f"[AlphaBot Chat] ⚠️ Falha ao salvar mensagem de usuário: {e}")
+                print(f"[AlphaBot Chat] ❌ Falha ao salvar mensagem de usuário: {e}")
+                import traceback
+                traceback.print_exc()
 
         # Criar serviço de IA
         ai_service = get_ai_service('alphabot')
@@ -346,8 +366,11 @@ Apresente APENAS a resposta final do Júri ao usuário.
                     text=answer,
                     time=int(pd.Timestamp.now().timestamp() * 1000)
                 )
+                print(f"[AlphaBot Chat] ✅ Resposta do bot salva: {conversation_id}")
             except Exception as e:
-                print(f"[AlphaBot Chat] ⚠️ Falha ao salvar resposta do bot: {e}")
+                print(f"[AlphaBot Chat] ❌ Falha ao salvar resposta do bot: {e}")
+                import traceback
+                traceback.print_exc()
         
         return jsonify({
             "answer": answer,

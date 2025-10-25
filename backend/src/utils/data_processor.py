@@ -77,12 +77,23 @@ def process_dataframe_unified(df: pd.DataFrame, source_info: str = "unknown") ->
     financial_terms_lower = [normalize_name(k) for k in financial_columns.keys()]
     skip_text_terms = [
         'mes_nome', 'nome', 'produto', 'categoria', 'cliente', 'regiao', 'região',
-        'cidade', 'estado', 'uf', 'loja', 'filial', 'grupo', 'setor', 'descricao', 'descrição'
+        'cidade', 'estado', 'uf', 'loja', 'filial', 'grupo', 'setor', 'descricao', 'descrição',
+        'mes', 'mês', 'janeiro', 'fevereiro', 'março', 'marco', 'abril', 'maio', 'junho',
+        'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro', 'id_transacao',
+        'transacao', 'id', 'codigo', 'código'
     ]
     skip_text_terms = [normalize_name(t) for t in skip_text_terms]
+    
+    # 🚨 CRÍTICO: Também excluir colunas auxiliares geradas anteriormente
+    skip_column_suffixes = ['_mes_nome', '_nome', '_ano', '_mes', '_trimestre']
 
     for col in processed_df.columns:
         col_norm = normalize_name(col)
+        
+        # Pular colunas auxiliares geradas (terminam com sufixos conhecidos)
+        if any(col_norm.endswith(suffix) for suffix in skip_column_suffixes):
+            logger.info(f"[UNIFIED PROCESSOR] ⏭️ Pulando coluna auxiliar: '{col}'")
+            continue
         
         # Detectar colunas financeiras por nome (case-insensitive, substring) e evitar colunas textuais
         is_financial = any(fin_term in col_norm for fin_term in financial_terms_lower) and not any(skip in col_norm for skip in skip_text_terms)
