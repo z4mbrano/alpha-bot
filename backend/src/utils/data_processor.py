@@ -13,6 +13,7 @@ Data: 19/12/2024
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Tuple, Any
+import unicodedata
 import logging
 
 # Configurar logging
@@ -66,14 +67,25 @@ def process_dataframe_unified(df: pd.DataFrame, source_info: str = "unknown") ->
     
     logger.info("[UNIFIED PROCESSOR] 🔧 Aplicando tipagem forçada para colunas financeiras...")
     
-    # Lista de termos financeiros em minúsculas (para comparação robusta)
-    financial_terms_lower = [k.lower() for k in financial_columns.keys()]
+    # Helpers
+    def normalize_name(s: str) -> str:
+        s = s.lower()
+        s = ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+        return s
+
+    # Termos financeiros/textuais normalizados
+    financial_terms_lower = [normalize_name(k) for k in financial_columns.keys()]
+    skip_text_terms = [
+        'mes_nome', 'nome', 'produto', 'categoria', 'cliente', 'regiao', 'região',
+        'cidade', 'estado', 'uf', 'loja', 'filial', 'grupo', 'setor', 'descricao', 'descrição'
+    ]
+    skip_text_terms = [normalize_name(t) for t in skip_text_terms]
 
     for col in processed_df.columns:
-        col_lower = col.lower()
+        col_norm = normalize_name(col)
         
-        # Detectar colunas financeiras por nome (case-insensitive, substring)
-        is_financial = any(fin_term in col_lower for fin_term in financial_terms_lower)
+        # Detectar colunas financeiras por nome (case-insensitive, substring) e evitar colunas textuais
+        is_financial = any(fin_term in col_norm for fin_term in financial_terms_lower) and not any(skip in col_norm for skip in skip_text_terms)
         
         if is_financial or col in financial_columns:
             logger.info(f"[UNIFIED PROCESSOR] Processando coluna financeira: '{col}'")
@@ -112,10 +124,14 @@ def process_dataframe_unified(df: pd.DataFrame, source_info: str = "unknown") ->
     logger.info("[UNIFIED PROCESSOR] 🔧 Aplicando tipagem forçada para colunas temporais...")
     
     for col in processed_df.columns:
-        col_lower = col.lower()
+        col_norm = normalize_name(col)
+        
+        # Evitar processar colunas derivadas como datas novamente
+        if any(col_norm.endswith(suffix) for suffix in ['_ano', '_mes', '_trimestre', '_mes_nome']):
+            continue
         
         # Detectar colunas de data
-        is_date = any(date_term in col_lower for date_term in ['data', 'date', 'tempo', 'time'])
+        is_date = any(date_term in col_norm for date_term in ['data', 'date', 'tempo', 'time'])
         
         if is_date:
             logger.info(f"[UNIFIED PROCESSOR] Processando coluna temporal: '{col}'")
