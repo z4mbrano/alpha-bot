@@ -200,6 +200,25 @@ export async function deleteAlphabotSession(
 }
 
 /**
+ * Carrega mensagens de uma conversa do AlphaBot
+ * @param conversationId - ID da conversa
+ * @returns Lista de mensagens
+ */
+export async function getAlphabotConversationMessages(
+  conversationId: string
+): Promise<{ id: string; author: string; text: string; time: number; chart?: any; suggestions?: string[] }[]> {
+  const response = await fetchWithErrorHandling<{ 
+    conversation_id: string; 
+    messages: { id: string; author: string; text: string; time: number; chart?: any; suggestions?: string[] }[];
+    source: string;
+  }>(
+    `${API_BASE_URL}/api/alphabot/conversation/${conversationId}/messages`,
+    { method: 'GET' }
+  )
+  return response.messages
+}
+
+/**
  * 🚀 SPRINT 2: Exporta dados da sessão como arquivo Excel
  * @param sessionId - ID da sessão
  * @returns Promise que resolve quando o download inicia

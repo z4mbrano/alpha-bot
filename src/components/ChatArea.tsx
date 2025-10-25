@@ -34,7 +34,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 export default function ChatArea() {
   const { active, messages, send, addMessage, clearConversation, isTyping } = useBot()
   const { user } = useAuth()
-  const { activeConversationId, createNewConversation } = useConversation()
+  const { activeConversationId, createNewConversation, switchConversation } = useConversation()
   const [text, setText] = useState('')
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [isUploading, setIsUploading] = useState(false)
@@ -121,6 +121,19 @@ export default function ChatArea() {
       setSelectedFiles([])
       
       if (response.ok) {
+        // 🆕 MULTI-USUÁRIO: Se o backend retornou conversation_id, usar ele
+        if (data.conversation_id) {
+          console.log(`✅ Backend retornou conversation_id: ${data.conversation_id}`)
+          const newConversationId = data.conversation_id
+          conversationId = newConversationId
+          
+          // Se não estava usando essa conversa, atualizar para ela
+          if (user && conversationId !== activeConversationId) {
+            console.log(`🔄 Mudando para conversa ${conversationId}`)
+            switchConversation(newConversationId)
+          }
+        }
+        
         // 🆕 MULTI-USUÁRIO: Usar conversation_id como session_id (em vez de global)
         if (conversationId) {
           // Armazenar session_id vinculado à conversa

@@ -529,10 +529,12 @@ def chat():
                     lines.append("")
                     lines.append("| Mês | Fatura Mensal (R$) |")
                     lines.append("|-----|-------------------:|")
+                    # Calcular o total real somando os valores mensais exibidos
+                    total_from_monthly = sum(val for _, val, _ in monthly)
                     for m, val, nome in monthly:
                         label = nome.capitalize() if isinstance(nome, str) else str(m)
                         lines.append(f"| {label} | {brl(val).replace('R$ ', '')} |")
-                    lines.append(f"| **TOTAL** | **{brl(total_receita).replace('R$ ', '')}** |")
+                    lines.append(f"| **TOTAL** | **{brl(total_from_monthly).replace('R$ ', '')}** |")
                     
                     # Adicionar insight
                     if len(monthly) >= 2:

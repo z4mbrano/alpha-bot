@@ -210,7 +210,15 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
             return
           }
           
-          const messages = await api.getConversationMessages(activeConversationId, user.id)
+          // 🎯 Usar endpoint específico para AlphaBot
+          let messages: any[]
+          if (active === 'alphabot') {
+            messages = await api.getAlphabotConversationMessages(activeConversationId)
+            console.log(`📥 Carregando mensagens do AlphaBot (conversa ${activeConversationId})`)
+          } else {
+            messages = await api.getConversationMessages(activeConversationId, user.id)
+            console.log(`📥 Carregando mensagens do DriveBot (conversa ${activeConversationId})`)
+          }
           
           // Converter mensagens do banco para o formato Message
           const convertedMessages: Message[] = messages.map(msg => ({
