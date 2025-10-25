@@ -27,6 +27,49 @@ alphabot_bp = Blueprint('alphabot', __name__, url_prefix='/api/alphabot')
 # Chave composta: f"{user_id}_{session_id}" quando user_id existir; caso contrário, usa apenas session_id
 ALPHABOT_SESSIONS: Dict[str, Dict[str, Any]] = {}
 
+# Armazenamento global para conversações do AlphaBot (histórico de mensagens em memória)
+# Chave: conversation_id -> { "id", "bot_id", "session_id", "user_id", "history": [...] }
+ALPHABOT_CONVERSATIONS: Dict[str, Dict[str, Any]] = {}
+
+
+def ensure_alphabot_conversation(conversation_id: str, session_id: str = None, user_id: int = None) -> Dict[str, Any]:
+    """
+    Garante que uma conversação do AlphaBot existe em memória, criando se necessário.
+    
+    Args:
+        conversation_id: ID da conversação
+        session_id: ID da sessão (opcional)
+        user_id: ID do usuário (opcional)
+    
+    Returns:
+        Dict da conversação
+    """
+    if conversation_id not in ALPHABOT_CONVERSATIONS:
+        ALPHABOT_CONVERSATIONS[conversation_id] = {
+            "id": conversation_id,
+            "bot_id": "alphabot",
+            "session_id": session_id,
+            "user_id": user_id,
+            "history": []
+        }
+    
+    return ALPHABOT_CONVERSATIONS[conversation_id]
+
+
+def append_alphabot_message(conversation: Dict[str, Any], role: str, content: str) -> None:
+    """
+    Adiciona uma mensagem ao histórico da conversação do AlphaBot.
+    
+    Args:
+        conversation: Dict da conversação
+        role: 'user' ou 'assistant'
+        content: Conteúdo da mensagem
+    """
+    conversation["history"].append({
+        "role": role,
+        "content": content
+    })
+
 
 @alphabot_bp.route('/upload', methods=['POST'])
 def upload():
@@ -355,6 +398,12 @@ def chat():
                     print(f"[AlphaBot Chat] ⚠️ Não foi possível criar/obter conversa para user_id={user_id} session_id={session_id}")
             except Exception as e:
                 print(f"[AlphaBot Chat] ❌ Erro ao preparar conversa: {e}")
+        
+        # Garantir que a conversação existe em memória
+        conversation = ensure_alphabot_conversation(conversation_id, session_id, user_id)
+        
+        # Adicionar mensagem do usuário ao histórico em memória
+        append_alphabot_message(conversation, "user", message)
 
         # Persistir mensagem do usuário no histórico, garantindo conversa
         if conversation_id and user_id:
@@ -461,16 +510,43 @@ def chat():
                     return f"R$ {v:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
                 lines = []
+                lines.append(f"## 🎯 OBJETIVO")
                 if requested_year:
-                    lines.append(f"A fatura total do ano de {requested_year} é de {brl(total_receita)}.")
+                    lines.append(f"Informar a fatura total do ano de {requested_year} e comparar a fatura total dos 12 meses.")
                 else:
-                    lines.append(f"A fatura total encontrada é de {brl(total_receita)}.")
+                    lines.append(f"Informar a fatura total e comparação mensal.")
+                
+                lines.append("")
+                lines.append(f"## 📊 EXECUÇÃO E RESULTADO")
+                if requested_year:
+                    lines.append(f"A fatura total para o ano de {requested_year} foi calculada como **{brl(total_receita)}**.")
+                else:
+                    lines.append(f"A fatura total encontrada é de **{brl(total_receita)}**.")
 
                 if monthly:
-                    lines.append("\nDistribuição mensal:")
+                    lines.append("")
+                    lines.append("A seguir, a comparação da fatura total para cada um dos 12 meses:")
+                    lines.append("")
+                    lines.append("| Mês | Fatura Mensal (R$) |")
+                    lines.append("|-----|-------------------:|")
                     for m, val, nome in monthly:
-                        label = nome.lower() if isinstance(nome, str) else str(m)
-                        lines.append(f"- {label}: {brl(val)}")
+                        label = nome.capitalize() if isinstance(nome, str) else str(m)
+                        lines.append(f"| {label} | {brl(val).replace('R$ ', '')} |")
+                    lines.append(f"| **TOTAL** | **{brl(total_receita).replace('R$ ', '')}** |")
+                    
+                    # Adicionar insight
+                    if len(monthly) >= 2:
+                        max_month = max(monthly, key=lambda x: x[1])
+                        min_month = min(monthly, key=lambda x: x[1])
+                        max_label = max_month[2].capitalize() if isinstance(max_month[2], str) else str(max_month[0])
+                        min_label = min_month[2].capitalize() if isinstance(min_month[2], str) else str(min_month[0])
+                        
+                        lines.append("")
+                        lines.append("## 💡 INSIGHT")
+                        lines.append(f"A análise da fatura mensal de {requested_year if requested_year else 'período analisado'} revela uma variação significativa ao longo do ano. ")
+                        lines.append(f"Observa-se que o mês de **{max_label}** ({brl(max_month[1])}) apresentou a maior fatura, ")
+                        lines.append(f"enquanto **{min_label}** ({brl(min_month[1])}) registrou a menor fatura. ")
+                        lines.append("Esta sazonalidade pode ser um fator importante para planejamento e projeções futuras.")
 
                 computed_answer = "\n".join(lines)
         except Exception as e:
@@ -494,6 +570,9 @@ def chat():
 Responda apenas com base nos dados; se a pergunta exigir somas/contagens fora do preview, explique a limitação e peça para rodar "calcular faturamento {pd.Timestamp.now().year}".
 """
             answer = ai_service.generate_response(validation_prompt)
+        
+        # Adicionar resposta do bot ao histórico em memória
+        append_alphabot_message(conversation, "assistant", answer)
 
         # Persistir resposta do bot
         if conversation_id and user_id:
@@ -616,12 +695,29 @@ def list_alphabot_conversations():
 def get_alphabot_conversation_meta(conversation_id: str):
     """
     Retorna metadados básicos de uma conversa específica do AlphaBot.
+    Primeiro tenta buscar do banco, depois da memória.
     """
     try:
+        # Tentar buscar do banco primeiro
         conv = database.get_alphabot_conversation(conversation_id)
-        if not conv:
-            return jsonify({"error": "Conversa não encontrada", "conversation_id": conversation_id}), 404
-        return jsonify(conv), 200
+        if conv:
+            # Se encontrou no banco, enriquecer com dados da memória se disponível
+            if conversation_id in ALPHABOT_CONVERSATIONS:
+                conv['history_length'] = len(ALPHABOT_CONVERSATIONS[conversation_id]['history'])
+            return jsonify(conv), 200
+        
+        # Fallback: buscar da memória
+        if conversation_id in ALPHABOT_CONVERSATIONS:
+            mem_conv = ALPHABOT_CONVERSATIONS[conversation_id]
+            return jsonify({
+                "id": conversation_id,
+                "session_id": mem_conv.get("session_id"),
+                "user_id": mem_conv.get("user_id"),
+                "bot_id": "alphabot",
+                "history_length": len(mem_conv.get("history", []))
+            }), 200
+        
+        return jsonify({"error": "Conversa não encontrada", "conversation_id": conversation_id}), 404
     except Exception as e:
         return jsonify({"error": f"Erro ao buscar conversa: {str(e)}"}), 500
 
@@ -630,15 +726,50 @@ def get_alphabot_conversation_meta(conversation_id: str):
 def get_alphabot_conversation_msgs(conversation_id: str):
     """
     Retorna todas as mensagens de uma conversa do AlphaBot.
+    Prioriza memória para mensagens recentes, com fallback para banco.
     """
     try:
+        messages = []
+        
+        # Primeiro tentar buscar da memória (mais rápido e tem histórico completo da sessão atual)
+        if conversation_id in ALPHABOT_CONVERSATIONS:
+            mem_conv = ALPHABOT_CONVERSATIONS[conversation_id]
+            history = mem_conv.get("history", [])
+            
+            # Converter formato do histórico para formato de mensagens
+            import time
+            for idx, entry in enumerate(history):
+                messages.append({
+                    "id": f"msg-mem-{idx}",
+                    "author": entry["role"] if entry["role"] == "user" else "bot",
+                    "text": entry["content"],
+                    "time": int(time.time() * 1000) - ((len(history) - idx) * 1000)  # Timestamps aproximados
+                })
+            
+            return jsonify({
+                "conversation_id": conversation_id,
+                "messages": messages,
+                "source": "memory"
+            }), 200
+        
+        # Fallback: buscar do banco
         conv = database.get_alphabot_conversation(conversation_id)
         if not conv:
-            return jsonify({"error": "Conversa não encontrada", "conversation_id": conversation_id}), 404
-        messages = database.get_alphabot_conversation_messages(conversation_id)
+            return jsonify({
+                "conversation_id": conversation_id,
+                "messages": [],
+                "source": "not_found"
+            }), 200
+        
+        db_messages = database.get_alphabot_conversation_messages(conversation_id)
         return jsonify({
             "conversation_id": conversation_id,
-            "messages": messages
+            "messages": db_messages,
+            "source": "database"
         }), 200
+        
     except Exception as e:
+        print(f"❌ Erro ao buscar mensagens: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": f"Erro ao buscar mensagens: {str(e)}"}), 500

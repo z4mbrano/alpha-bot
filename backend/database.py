@@ -797,7 +797,7 @@ def get_alphabot_conversation_messages(conversation_id: str) -> List[Dict[str, A
     
     try:
         cursor.execute('''
-            SELECT author, text, time, chart_data, suggestions
+            SELECT id, author, text, time, chart_data, suggestions
             FROM alphabot_messages 
             WHERE conversation_id = ?
             ORDER BY time ASC
@@ -807,17 +807,22 @@ def get_alphabot_conversation_messages(conversation_id: str) -> List[Dict[str, A
         messages = []
         for row in rows:
             message = {
+                'id': f"msg-{row['id']}",
                 'author': row['author'],
                 'text': row['text'],
-                'time': row['time'],
-                'chart_data': row['chart_data'],
-                'suggestions': json.loads(row['suggestions']) if row['suggestions'] else None
+                'time': row['time']
             }
+            if row['chart_data']:
+                message['chart'] = json.loads(row['chart_data']) if isinstance(row['chart_data'], str) else row['chart_data']
+            if row['suggestions']:
+                message['suggestions'] = json.loads(row['suggestions']) if isinstance(row['suggestions'], str) else row['suggestions']
             messages.append(message)
         return messages
         
     except Exception as e:
         print(f"❌ Erro ao recuperar mensagens AlphaBot: {e}")
+        import traceback
+        traceback.print_exc()
         return []
     finally:
         conn.close()
