@@ -3332,24 +3332,26 @@ def alphabot_upload():
             print(f"[AlphaBot] ⚠️ Removidas {duplicates_removed} linhas duplicadas")
         print(f"[AlphaBot] ✅ DataFrame final: {len(consolidated_df)} linhas após remoção de duplicatas")
         
-        # Pré-processamento: Detectar e processar colunas de data
-        date_columns_found = []
+        # 🔧 FIX #1: Usar processamento robusto de datas (mesmo do DriveBot)
+        print("[AlphaBot] 🔄 Aplicando processamento robusto de datas...")
+        datetime_columns = detect_datetime_columns(consolidated_df)
+        date_columns_found = list(datetime_columns.keys())
         
-        for col in consolidated_df.columns:
-            # Tentar detectar se é uma coluna de data
-            if 'data' in col.lower() or 'date' in col.lower():
-                try:
-                    consolidated_df[col] = pd.to_datetime(consolidated_df[col], errors='coerce')
-                    date_columns_found.append(col)
-                    
-                    # Criar colunas auxiliares
-                    consolidated_df[f'{col}_Ano'] = consolidated_df[col].dt.year
-                    consolidated_df[f'{col}_Mes'] = consolidated_df[col].dt.month
-                    consolidated_df[f'{col}_Mes_Nome'] = consolidated_df[col].dt.strftime('%B').str.lower()
-                    consolidated_df[f'{col}_Trimestre'] = consolidated_df[col].dt.quarter
-                    
-                except Exception as e:
-                    print(f"[AlphaBot] Falha ao processar coluna de data '{col}': {e}")
+        print(f"[AlphaBot] ✅ Colunas de data detectadas: {date_columns_found}")
+        
+        # Aplicar as colunas processadas de volta ao DataFrame
+        for col_name, processed_series in datetime_columns.items():
+            consolidated_df[col_name] = processed_series
+            
+            # Criar colunas auxiliares consistentes
+            try:
+                consolidated_df[f'{col_name}_Ano'] = processed_series.dt.year
+                consolidated_df[f'{col_name}_Mes'] = processed_series.dt.month
+                consolidated_df[f'{col_name}_Mes_Nome'] = processed_series.dt.strftime('%B').str.lower()
+                consolidated_df[f'{col_name}_Trimestre'] = processed_series.dt.quarter
+                print(f"[AlphaBot] ✅ Colunas auxiliares criadas para '{col_name}'")
+            except Exception as e:
+                print(f"[AlphaBot] ⚠️ Erro ao criar colunas auxiliares para '{col_name}': {e}")
         
         # CORREÇÃO #2: Processar colunas numéricas (especialmente valores monetários)
         for col in consolidated_df.columns:
@@ -3838,34 +3840,36 @@ def alphabot_chat():
         if not session_id or not message:
             return jsonify({"error": "session_id e message são obrigatórios"}), 400
         
-        # 🆕 MULTI-USUÁRIO: Salvar mensagem do usuário no banco
+        # 🔧 FIX #3 (AlphaBot específico): Salvar mensagem do usuário no sistema AlphaBot
         if conversation_id and user_id:
             try:
-                database.add_message(
+                database.add_alphabot_message(
                     conversation_id=conversation_id,
                     author='user',
                     text=message,
                     time=int(datetime.now().timestamp() * 1000)
                 )
+                print(f"✅ Mensagem do usuário salva na conversa AlphaBot {conversation_id}")
             except Exception as db_error:
-                print(f"⚠️ Erro ao salvar mensagem do usuário: {db_error}")
+                print(f"⚠️ Erro ao salvar mensagem do usuário no AlphaBot: {db_error}")
         
         # 🚀 VERIFICAR CACHE PRIMEIRO (SPRINT 1)
         cached_response = get_cached_response(session_id, message)
         if cached_response:
-            # 🆕 Salvar resposta em cache no banco também
+            # 🔧 FIX #3: Salvar resposta em cache no sistema AlphaBot correto
             if conversation_id and user_id:
                 try:
-                    database.add_message(
+                    database.add_alphabot_message(
                         conversation_id=conversation_id,
                         author='alphabot',
                         text=cached_response.get('answer', ''),
                         time=int(datetime.now().timestamp() * 1000),
-                        chart_data=cached_response.get('chart'),
+                        chart_data=json.dumps(cached_response.get('chart')) if cached_response.get('chart') else None,
                         suggestions=cached_response.get('suggestions')
                     )
+                    print(f"✅ Resposta em cache do AlphaBot salva na conversa {conversation_id}")
                 except Exception as db_error:
-                    print(f"⚠️ Erro ao salvar resposta em cache: {db_error}")
+                    print(f"⚠️ Erro ao salvar resposta em cache do AlphaBot: {db_error}")
             
             return jsonify(cached_response)
         
@@ -4245,19 +4249,29 @@ def chat():
         if not bot_id or not message:
             return jsonify({"error": "bot_id e message são obrigatórios"}), 400
         
-        # SISTEMA DE PERSISTÊNCIA EXCLUSIVO ALPHABOT: Salvar mensagem do usuário
+        # 🔧 FIX #2: Salvar mensagem do usuário no sistema correto baseado no bot
         if conversation_id and user_id:
             try:
-                # Usar sistema exclusivo AlphaBot
-                database.add_alphabot_message(
-                    conversation_id=conversation_id,
-                    author='user',
-                    text=message,
-                    time=int(datetime.now().timestamp() * 1000)
-                )
-                print(f"✅ Mensagem do usuário salva na conversa AlphaBot {conversation_id}")
+                if bot_id == 'alphabot':
+                    # Sistema AlphaBot
+                    database.add_alphabot_message(
+                        conversation_id=conversation_id,
+                        author='user',
+                        text=message,
+                        time=int(datetime.now().timestamp() * 1000)
+                    )
+                    print(f"✅ Mensagem do usuário salva na conversa AlphaBot {conversation_id}")
+                else:
+                    # Sistema DriveBot (tabelas compartilhadas)
+                    database.add_message(
+                        conversation_id=conversation_id,
+                        author='user',
+                        text=message,
+                        time=int(datetime.now().timestamp() * 1000)
+                    )
+                    print(f"✅ Mensagem do usuário salva na conversa DriveBot {conversation_id}")
             except Exception as db_error:
-                print(f"⚠️ Erro ao salvar mensagem do usuário no AlphaBot: {db_error}")
+                print(f"⚠️ Erro ao salvar mensagem do usuário: {db_error}")
             
         # Gerar resposta do bot
         result = get_bot_response(bot_id, message, conversation_id)
@@ -4265,17 +4279,28 @@ def chat():
         if "error" in result:
             return jsonify(result), 500
         
-        # 🆕 MULTI-USUÁRIO: Salvar resposta do bot no banco
+        # 🔧 FIX #3: Salvar resposta do bot no sistema correto baseado no bot
         if conversation_id and user_id and "response" in result:
             try:
-                database.add_message(
-                    conversation_id=conversation_id,
-                    author=bot_id,
-                    text=result["response"],
-                    time=int(datetime.now().timestamp() * 1000),
-                    suggestions=result.get("suggestions")
-                )
-                print(f"✅ Resposta do bot salva na conversa {conversation_id}")
+                if bot_id == 'alphabot':
+                    # Sistema AlphaBot
+                    database.add_alphabot_message(
+                        conversation_id=conversation_id,
+                        author=bot_id,
+                        text=result["response"],
+                        time=int(datetime.now().timestamp() * 1000)
+                    )
+                    print(f"✅ Resposta do AlphaBot salva na conversa {conversation_id}")
+                else:
+                    # Sistema DriveBot (tabelas compartilhadas)
+                    database.add_message(
+                        conversation_id=conversation_id,
+                        author=bot_id,
+                        text=result["response"],
+                        time=int(datetime.now().timestamp() * 1000),
+                        suggestions=result.get("suggestions")
+                    )
+                    print(f"✅ Resposta do DriveBot salva na conversa {conversation_id}")
             except Exception as db_error:
                 print(f"⚠️ Erro ao salvar resposta do bot: {db_error}")
             
