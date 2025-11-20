@@ -209,7 +209,21 @@ def chat():
             }), 200
         
         # Processar pergunta sobre dados já carregados
-        ai_service = get_ai_service('drivebot')
+        try:
+            ai_service = get_ai_service('drivebot')
+        except Exception as ai_error:
+            error_msg = str(ai_error)
+            print(f"❌ [DriveBot] Erro ao inicializar AI Service: {error_msg}")
+            response_text = (
+                "## ⚠️ Erro de Configuração\n\n"
+                f"Não consegui inicializar o serviço de IA: {error_msg}\n\n"
+                "Verifique se a variável DRIVEBOT_API_KEY está configurada corretamente no Render."
+            )
+            append_message(conversation, "assistant", response_text)
+            return jsonify({
+                "response": response_text,
+                "conversation_id": conversation_id
+            }), 500
         
         # Preparar contexto
         context_sections = []
@@ -229,14 +243,26 @@ def chat():
         # Montar prompt completo
         full_prompt = "\n\n".join(context_sections) + f"\n\nUsuário: {message}\nDriveBot:"
         
-        # Gerar resposta
-        response_text = ai_service.generate_response(full_prompt)
+        # Gerar resposta com tratamento de erro melhorado
+        try:
+            print(f"[DriveBot] Gerando resposta para: {message[:100]}")
+            response_text = ai_service.generate_response(full_prompt)
+            print(f"[DriveBot] Resposta gerada: {len(response_text) if response_text else 0} caracteres")
+        except Exception as gen_error:
+            error_msg = str(gen_error)
+            print(f"❌ [DriveBot] Erro ao gerar resposta: {error_msg}")
+            response_text = (
+                "## ⚠️ Erro ao Processar Análise\n\n"
+                f"Erro técnico: {error_msg}\n\n"
+                "Os dados estão carregados, mas ocorreu um problema ao gerar a resposta. "
+                "Tente reformular a pergunta."
+            )
         
         if not response_text:
             response_text = (
                 "## Não consegui concluir a análise\n\n"
-                "Os dados estão mapeados, mas não consegui gerar a síntese solicitada. "
-                "Tente reformular a pergunta ou peça um recorte diferente."
+                "Os dados estão mapeados, mas a IA retornou uma resposta vazia. "
+                "Tente reformular a pergunta ou peça um recorte diferente (ex: ranking por região, tendência mensal, principais categorias)."
             )
         
         append_message(conversation, "assistant", response_text)
