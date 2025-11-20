@@ -50,13 +50,23 @@ class DriveService:
         try:
             if GOOGLE_SERVICE_ACCOUNT_INFO:
                 # Credenciais via variável de ambiente (JSON string)
-                info = json.loads(GOOGLE_SERVICE_ACCOUNT_INFO)
+                print("[DriveService] 📝 GOOGLE_SERVICE_ACCOUNT_INFO encontrada")
+                try:
+                    info = json.loads(GOOGLE_SERVICE_ACCOUNT_INFO)
+                    print(f"[DriveService] ✅ JSON parseado com sucesso. Project: {info.get('project_id', 'N/A')}")
+                except json.JSONDecodeError as json_err:
+                    print(f"[DriveService] ❌ Erro ao parsear JSON: {json_err}")
+                    print(f"[DriveService] JSON (primeiros 200 chars): {GOOGLE_SERVICE_ACCOUNT_INFO[:200]}")
+                    raise
+                
                 credentials = service_account.Credentials.from_service_account_info(
                     info,
                     scopes=GOOGLE_SCOPES
                 )
+                print(f"[DriveService] ✅ Credenciais criadas para: {info.get('client_email', 'N/A')}")
             elif GOOGLE_SERVICE_ACCOUNT_FILE:
                 # Credenciais via arquivo JSON
+                print(f"[DriveService] 📁 Usando arquivo: {GOOGLE_SERVICE_ACCOUNT_FILE}")
                 if not os.path.exists(GOOGLE_SERVICE_ACCOUNT_FILE):
                     raise RuntimeError(
                         f"Arquivo de credenciais não encontrado: {GOOGLE_SERVICE_ACCOUNT_FILE}"
@@ -65,7 +75,11 @@ class DriveService:
                     GOOGLE_SERVICE_ACCOUNT_FILE,
                     scopes=GOOGLE_SCOPES,
                 )
+                print("[DriveService] ✅ Credenciais carregadas do arquivo")
             else:
+                print("[DriveService] ❌ Nenhuma fonte de credenciais encontrada")
+                print(f"[DriveService] GOOGLE_SERVICE_ACCOUNT_INFO: {bool(GOOGLE_SERVICE_ACCOUNT_INFO)}")
+                print(f"[DriveService] GOOGLE_SERVICE_ACCOUNT_FILE: {bool(GOOGLE_SERVICE_ACCOUNT_FILE)}")
                 raise RuntimeError(
                     "Credenciais não configuradas. Defina GOOGLE_SERVICE_ACCOUNT_FILE com o caminho "
                     "do JSON da service account ou GOOGLE_SERVICE_ACCOUNT_INFO com o conteúdo JSON."
