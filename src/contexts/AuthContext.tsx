@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { toast } from 'sonner'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD ? 'https://alpha-bot-oglo.onrender.com' : 'http://localhost:5000')
 
 interface User {
   id: number
@@ -25,6 +27,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Carregar usuário do localStorage na inicialização
   useEffect(() => {
+    // Debug: exibir URL base atual para facilitar diagnóstico
+    try {
+      console.log('[AuthContext] API_BASE_URL em uso:', API_BASE_URL)
+      if (API_BASE_URL.includes('railway')) {
+        console.warn('[AuthContext] ⚠️ URL aponta para Railway. Atualize VITE_API_URL para Render em Vercel.')
+      }
+    } catch {}
+
     const storedUser = localStorage.getItem('alpha_user')
     if (storedUser) {
       try {
