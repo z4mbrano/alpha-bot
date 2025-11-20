@@ -16,8 +16,11 @@ import type {
 } from '../types'
 
 // Configuração da URL da API
-// Usa variável de ambiente VITE_API_URL (Railway em produção) ou localhost em dev
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+// Usa variável de ambiente VITE_API_URL (Render em produção) ou localhost em dev
+const API_BASE_URL = import.meta.env.VITE_API_URL || 
+  (import.meta.env.PROD 
+    ? 'https://alpha-bot-oglo.onrender.com' 
+    : 'http://localhost:5000')
 
 /**
  * Classe de erro customizada para erros da API

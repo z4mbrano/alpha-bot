@@ -3885,6 +3885,22 @@ def search_conversations():
         return jsonify({"error": f"Erro ao buscar: {str(e)}"}), 500
 
 
+@app.route('/')
+def root():
+    """Rota raiz - redireciona para documentação da API"""
+    return jsonify({
+        "message": "AlphaBot API está funcionando!",
+        "version": "v2.0",
+        "endpoints": {
+            "health": "/api/health",
+            "alphabot": "/api/alphabot/*",
+            "drivebot": "/api/drivebot/*",
+            "auth": "/api/auth/*"
+        },
+        "documentation": "Acesse /api/health para verificar o status do serviço",
+        "frontend": "Configure VITE_API_URL para esta URL no frontend"
+    })
+
 @app.route('/api/health', methods=['GET'])
 def health():
     """Endpoint de saúde do serviço para Render/Railway"""
