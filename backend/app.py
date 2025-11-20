@@ -2099,23 +2099,32 @@ Não adicione nenhuma outra explicação, markdown, ou texto extra. APENAS o JSO
 **JSON de Saída (APENAS JSON, SEM TEXTO EXTRA):**"""
 
     try:
+        print(f"[generate_analysis_command] 🔑 Configurando API com key: {'presente' if api_key else 'AUSENTE'}")
         genai.configure(api_key=api_key)
+        
+        print(f"[generate_analysis_command] 🤖 Criando modelo gemini-2.5-flash")
         model = genai.GenerativeModel('gemini-2.5-flash')
+        
         # Configuração leve: apenas ajusta temperatura para consistência
         generation_config = {
             'temperature': 0.3  # Mais determinístico para JSON
         }
+        
+        print(f"[generate_analysis_command] 📝 Enviando prompt... (len: {len(translator_prompt)} chars)")
         response = model.generate_content(translator_prompt, generation_config=generation_config)
         response_text = (response.text or "").strip()
+        
+        print(f"[generate_analysis_command] ✅ Resposta recebida (len: {len(response_text)} chars)")
         
         # Limpar markdown se houver
         response_text = response_text.replace('```json', '').replace('```', '').strip()
         
         command = json.loads(response_text)
+        print(f"[generate_analysis_command] ✅ JSON parseado com sucesso")
         return command
     except Exception as e:
-        print(f"Erro ao gerar comando de análise: {e}")
-        print(f"Resposta recebida: {response_text if 'response_text' in locals() else 'N/A'}")
+        print(f"[generate_analysis_command] ❌ ERRO: {type(e).__name__}: {e}")
+        print(f"[generate_analysis_command] Resposta recebida: {response_text if 'response_text' in locals() else 'N/A'}")
         return None
 
 
@@ -2585,14 +2594,19 @@ def handle_drivebot_followup(message: str, conversation: Dict[str, Any], api_key
     conversation_history = list(conversation.get("messages", []))[-6:]
     
     # FASE 1: Traduzir pergunta em comando JSON (COM HISTÓRICO + COLUNAS AUXILIARES)
-    print(f"[DriveBot] Traduzindo pergunta: {message}")
+    print(f"[DriveBot] 🔄 Traduzindo pergunta: {message}")
+    print(f"[DriveBot] 📊 Colunas disponíveis: {len(available_columns)}")
+    print(f"[DriveBot] 🔑 API Key presente: {bool(api_key)}")
+    
     command = generate_analysis_command(message, available_columns, api_key, conversation_history, auxiliary_columns_info)
     
     if not command:
-        print("[DriveBot] Falha ao gerar comando de análise")
+        print("[DriveBot] ❌ ERRO: Falha ao gerar comando de análise")
+        print(f"[DriveBot] Debug - message: {message[:100]}")
+        print(f"[DriveBot] Debug - api_key: {'presente' if api_key else 'AUSENTE'}")
         return None
     
-    print(f"[DriveBot] Comando gerado: {json.dumps(command, indent=2)}")
+    print(f"[DriveBot] ✅ Comando gerado: {json.dumps(command, indent=2)}")
     
     # v11.0 FIX #7: Suporte para múltiplos comandos (lista de ferramentas)
     # Isso resolve "list object has no attribute 'get'" quando LLM envia [{...}, {...}]
