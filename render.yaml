@@ -1,0 +1,32 @@
+services:
+  # Backend API do AlphaBot
+  - type: web
+    name: alpha-bot-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    buildCommand: docker build -t alpha-bot-backend .
+    startCommand: python backend/app.py
+    envVars:
+      - key: RENDER
+        value: "true"
+      - key: FLASK_ENV
+        value: "production"
+      - key: PYTHONPATH
+        value: "/app"
+      - key: PORT
+        value: "5000"
+    healthCheckPath: /api/health
+    autoDeploy: true
+
+  # Banco PostgreSQL gratuito
+  - type: pgsql
+    name: alpha-bot-postgres
+    databaseName: alphabot
+    user: alphabot_user
+    plan: free
+    region: oregon
+    
+# Build settings
+buildCommand: docker build -t alpha-bot .

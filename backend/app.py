@@ -3887,8 +3887,26 @@ def search_conversations():
 
 @app.route('/api/health', methods=['GET'])
 def health():
-    """Endpoint de saúde do serviço"""
-    return jsonify({"status": "ok", "service": "Alpha Insights Chat Backend"})
+    """Endpoint de saúde do serviço para Render/Railway"""
+    try:
+        # Testar conexão com banco de dados
+        database.init_database()  # Verificar se o DB está acessível
+        db_status = "healthy"
+    except Exception as e:
+        db_status = f"unhealthy: {str(e)}"
+    
+    return jsonify({
+        "status": "ok", 
+        "service": "Alpha Insights Chat Backend",
+        "database": db_status,
+        "environment": {
+            "render": bool(os.environ.get('RENDER')),
+            "railway": bool(os.environ.get('RAILWAY_ENVIRONMENT')),
+            "local": not (os.environ.get('RENDER') or os.environ.get('RAILWAY_ENVIRONMENT')),
+            "postgres": bool(os.environ.get('DATABASE_URL') or os.environ.get('POSTGRES_URL'))
+        },
+        "timestamp": datetime.now().isoformat()
+    })
 
 if __name__ == '__main__':
     # Detectar ambiente e configurar porta/host apropriados
