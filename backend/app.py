@@ -30,7 +30,12 @@ from src.api.health import health_bp  # type: ignore
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)  # Permitir requisições do frontend
+# Configuração específica do CORS para Vercel
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["https://alpha-bot-six.vercel.app", "http://localhost:5173", "http://localhost:3000"]
+    }
+})
 
 # Registro efetivo dos blueprints (respeitam url_prefix definidos nos módulos)
 try:

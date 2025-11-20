@@ -2,13 +2,6 @@
   "version": 2,
   "builds": [
     {
-      "src": "backend/app.py",
-      "use": "@vercel/python",
-      "config": {
-        "maxLambdaSize": "50mb"
-      }
-    },
-    {
       "src": "package.json",
       "use": "@vercel/static-build",
       "config": {
@@ -17,26 +10,6 @@
     }
   ],
   "routes": [
-    {
-      "src": "/api/health",
-      "dest": "/backend/app.py"
-    },
-    {
-      "src": "/api/auth/(.*)",
-      "dest": "/backend/app.py"
-    },
-    {
-      "src": "/api/conversations/(.*)",
-      "dest": "/backend/app.py"
-    },
-    {
-      "src": "/api/alphabot/(.*)",
-      "dest": "/backend/app.py"
-    },
-    {
-      "src": "/api/chat",
-      "dest": "/backend/app.py"
-    },
     {
       "src": "/assets/(.*)",
       "dest": "/assets/$1"
